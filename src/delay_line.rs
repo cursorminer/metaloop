@@ -47,6 +47,10 @@ impl DelayLine {
 
         lerp(v0, v1, frac)
     }
+
+    pub fn len(& self) -> usize {
+        return self.buffer.len()
+    }
 }
 
 #[cfg(test)]
