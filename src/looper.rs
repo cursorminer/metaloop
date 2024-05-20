@@ -4,6 +4,28 @@ use crate::delay_line::DelayLine;
 
 pub struct Looper {
     delay_line: DelayLine,
+    is_looping: bool,
+    loop_start: usize,
+    loop_end: usize,
+    current_read_position: usize,
+}
+
+// wraps an unsigned integer into a given range [min, max]
+pub fn wrap(i: usize, min: usize, max: usize) -> usize {
+    assert!(min < max);
+    if max == 0 {
+        return 0;
+    }
+    let range = max - min + 1;
+    if i >= min
+    {
+     return ((i - min) % range) + min;
+    }
+    else {
+        let offset = min % range;
+        let i_offset = i % range;
+        return (((i_offset + range) - offset) % range) + min;
+    }
 }
 
 #[allow(dead_code)]
@@ -15,13 +37,48 @@ impl Looper
         let del = DelayLine::new(size);
         Self{
             delay_line: del,
+            is_looping: false,
+            loop_start: 10,
+            loop_end: 0,
+            current_read_position: 0,
         }
     }
 
-    pub fn tick(&mut self, input: f32) -> f32 {
+    // set the start and end position of the loop, indexed in samples counting back from the most recently input sample
+    pub fn set_looping_region(&mut self,  start: usize, end: usize) { 
+        // note that since pos is a delay, the start is larger than the end
+        self.is_looping = true;
+        assert!(start > end);
+        self.loop_start = start;
+        self.loop_end = end;
+        // wrap the current read position into the loop
+        self.current_read_position = self.loop_start;
+    }
+
+    pub fn stop_looping(&mut self)
+    {
+        self.is_looping = false;
+    }
+
+    pub fn tick_delay(&mut self, input: f32) {
+        assert!(!self.is_looping);
         self.delay_line.tick(input);
-        let out = self.delay_line.read(0);
+    }
+
+    pub fn tick_loop(&mut self) -> f32 {
+        if !self.is_looping {
+            return self.delay_line.read(0);
+        }
+        
+        let out = self.delay_line.read(self.current_read_position);
+
+        self.tick_read_pos();
         out
+    }
+
+    fn tick_read_pos(&mut self) -> usize {
+        self.current_read_position = wrap(self.current_read_position - 1, self.loop_end, self.loop_start);
+        return self.current_read_position;
     }
 }
 
@@ -30,9 +87,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_looper() {
+    fn test_wrap()
+    {
+        assert_eq!(wrap(2, 2, 5), 2);
+        assert_eq!(wrap(5, 2, 5), 5);
+        assert_eq!(wrap(6, 2, 5), 2);
+        assert_eq!(wrap(1, 2, 5), 5);
+
+       assert_eq!( wrap(10, 0, 30), 10);
+       assert_eq!(wrap(30, 0, 30), 30);
+
+       assert_eq!(wrap(10, 20, 30), 21);
+       assert_eq!(wrap(105, 10, 20), 17);
+
+    }
+
+    #[test]
+    fn test_looper_dry() {
         let mut looper = Looper::new();
-        let result = looper.tick(42.0);
+        looper.stop_looping();
+        looper.tick_delay(42.0);
+        let result = looper.tick_loop();
         assert_eq!(result, 42.0);
+    }
+
+    #[test]
+    fn test_looper_loop() {
+        let mut looper = Looper::new();
+
+        // put 10 samples into the buffer
+        for i in 0..11 {
+            looper.tick_delay(i as f32);
+        }
+
+        // set the loop region to be the first 6 samples of this buffer
+        looper.set_looping_region(10, 5);
+
+        let mut out = vec![];
+        for _i in 0..10 {
+            out.push(looper.tick_loop());
+        }
+        let expected = vec!(0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 0.0, 1.0, 2.0, 3.0);
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn test_looper_readpos() {
+        let mut looper = Looper::new();
+        looper.set_looping_region(8, 4);
+        let mut out = vec![];
+        for _i in 0..10 {
+            out.push(looper.tick_read_pos());
+        }
+        let expected = vec![7, 6, 5, 4, 8, 7, 6, 5, 4, 8];
+        assert_eq!(out, expected);
     }
 }
