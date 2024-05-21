@@ -33,6 +33,9 @@ pub struct Grain<'a> {
 #[allow(dead_code)]
 impl<'a> Grain<'a> {      
 
+    // offset: the initial delay time where the grain starts
+    // duration: how long the grain lasts
+    // fade: number of samples to fade in and out (this is within the duration above)
     pub fn new(buf: &'a DelayLine, offset: usize, duration: usize, fade: usize) -> Grain<'a> {
         assert!(duration < buf.len());
         assert!(offset < buf.len());
@@ -46,20 +49,27 @@ impl<'a> Grain<'a> {
     pub fn tick(&mut self) -> f32 {
         if self.is_finished()
         {
-            return 0.0;
+            return 0.0; 
         }
 
         self.delay_pos = self.delay_pos - 1;
+        self.window_pos = self.window_pos + 1; // starts at one so the window is non-zero immediately
         
-        // distance to end, maybe this is a stupid way to calculate it
-        self.window_pos = self.window_pos + 1;
-        
-        
-        // get window amplitude
         let win = trapezoid_window(self.window_pos, self.duration, self.fade_duration);
-        // read buffer
         let out = self.buffer.read(self.delay_pos);
+        
         win * out
+    }
+
+    pub fn stop(&mut self) {
+        // if already fading out don't stop it
+        if self.window_pos > (self.duration - self.fade_duration) {
+            return;
+        }
+
+        // otherwise tweak the values so that the grain fades now
+        self.duration = self.window_pos + self.fade_duration;
+        self.end_delay = self.delay_pos + self.fade_duration;
     }
 
     pub fn is_finished(& self) -> bool {
@@ -122,5 +132,32 @@ mod tests {
         }
 
         assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn test_grain_stop()
+    {
+        let mut delay_line = DelayLine::new(30);
+        fill_delay_constant(&mut delay_line, 4.0);
+
+        let mut grain = Grain::new(&delay_line, 20, 15, 4);
+
+        let expected = vec![1.0, 2.0, 3.0, 4.0, 4.0, 4.0];
+        let mut out = vec![];
+        for _i in 0..expected.len() {
+            out.push(grain.tick());
+        }
+
+        assert_eq!(out, expected);
+
+        let expected_fade = vec![4.0, 3.0, 2.0, 1.0, 0.0];
+
+        grain.stop();
+        let mut out = vec![];
+        for _i in 0..expected_fade.len() {
+            out.push(grain.tick());
+        }
+
+        assert_eq!(out, expected_fade);
     }
 }
