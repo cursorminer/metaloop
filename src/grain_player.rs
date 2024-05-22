@@ -1,15 +1,18 @@
 use crate::delay_line::DelayLine;
 use crate::grain::Grain;
+use crate::scheduled_grain::ScheduledGrain;
 
-struct GrainPlayer {
+struct GrainPlayer<'a> {
     sample_rate: f32,
+    grains: [Grain<'a>; 4],
+    delay_line: DelayLine,
 }
 
 // schedule and play grains
 #[allow(dead_code)]
-impl GrainPlayer {
-    pub fn new(sample_rate: f32) -> GrainPlayer {
-        GrainPlayer { sample_rate }
+impl<'a> GrainPlayer<'a> {
+    pub fn new(sample_rate: f32) -> GrainPlayer<'a> {
+        GrainPlayer {}
     }
 
     pub fn tick(&mut self) -> f32 {
