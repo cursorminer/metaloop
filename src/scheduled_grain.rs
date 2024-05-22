@@ -2,13 +2,14 @@ use crate::delay_line::DelayLine;
 use crate::grain::Grain;
 
 // a grain that can be scheduled to play at a later time
-pub struct ScheduledGrain<'a> {
-    grain: Grain<'a>,
+pub struct ScheduledGrain {
+    grain: Grain,
     countdown: u64,
 }
-
+/*
 impl<'a> ScheduledGrain<'a> {
     pub fn new() -> Self {
+        let grain = Grain::new(DelayLine::new(0), 0, 0, 0);
         Self {
             grain,
             countdown: scheduled_at,
@@ -49,3 +50,4 @@ mod tests {
         assert_eq!(scheduled_grain.is_finished(), true);
     }
 }
+*/

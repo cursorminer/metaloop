@@ -1,5 +1,3 @@
-use crate::delay_line::DelayLine;
-
 fn trapezoid_window(pos: usize, duration: usize, fade: usize) -> f32 {
     if fade == 0 {
         return 1.0;
@@ -10,7 +8,7 @@ fn trapezoid_window(pos: usize, duration: usize, fade: usize) -> f32 {
         return frac;
     } else if pos > duration {
         return 0.0;
-    } else if pos <= (duration - fade){
+    } else if pos <= (duration - fade) {
         return 1.0;
     } else {
         let frac = ((duration + 1) - pos) as f32 / fade as f32;
@@ -18,11 +16,10 @@ fn trapezoid_window(pos: usize, duration: usize, fade: usize) -> f32 {
     }
 }
 
-
 // a rather short lived thing that plays a single faded grain
 // the duration includes two fade durations
-pub struct Grain<'a> {
-    buffer: &'a DelayLine, 
+pub struct Grain {
+    scheduled_wait: usize,
     delay_pos: usize,
     end_delay: usize,
     duration: usize,
@@ -31,34 +28,44 @@ pub struct Grain<'a> {
 }
 
 #[allow(dead_code)]
-impl<'a> Grain<'a> {      
-
+impl Grain {
     // offset: the initial delay time where the grain starts
     // duration: how long the grain lasts
     // fade: number of samples to fade in and out (this is within the duration above)
-    pub fn new(buf: &'a DelayLine, offset: usize, duration: usize, fade: usize) -> Grain<'a> {
-        assert!(duration < buf.len());
-        assert!(offset < buf.len());
+    pub fn new(scheduled_wait: usize, offset: usize, duration: usize, fade: usize) -> Grain {
         assert!(offset >= duration);
 
-        let actual_fade = if (fade * 2) > duration { duration / 2 } else {fade}; 
+        let actual_fade = if (fade * 2) > duration {
+            duration / 2
+        } else {
+            fade
+        };
 
-        Grain{buffer: buf, delay_pos: offset, end_delay: offset - duration, duration: duration, fade_duration: actual_fade, window_pos: 0}
+        Grain {
+            scheduled_wait: scheduled_wait,
+            delay_pos: offset,
+            end_delay: offset - duration,
+            duration: duration,
+            fade_duration: actual_fade,
+            window_pos: 0,
+        }
     }
 
-    pub fn tick(&mut self) -> f32 {
-        if self.is_finished()
-        {
-            return 0.0; 
+    pub fn tick(&mut self) -> (usize, f32) {
+        if self.is_finished() {
+            return (0, 0.0);
+        }
+
+        if self.is_scheduled() {
+            self.scheduled_wait = self.scheduled_wait - 1;
+            return (0, 0.0);
         }
 
         self.delay_pos = self.delay_pos - 1;
         self.window_pos = self.window_pos + 1; // starts at one so the window is non-zero immediately
-        
+
         let win = trapezoid_window(self.window_pos, self.duration, self.fade_duration);
-        let out = self.buffer.read(self.delay_pos);
-        
-        win * out
+        (self.delay_pos, win)
     }
 
     pub fn stop(&mut self) {
@@ -72,40 +79,24 @@ impl<'a> Grain<'a> {
         self.end_delay = self.delay_pos + self.fade_duration;
     }
 
-    pub fn is_finished(& self) -> bool {
+    pub fn is_finished(&self) -> bool {
         return self.delay_pos == self.end_delay;
     }
 
+    pub fn is_scheduled(&self) -> bool {
+        return self.scheduled_wait > 0;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn fill_delay_ramp(delay_line: &mut DelayLine)
-    {
-        for i in 0..delay_line.len() {
-            delay_line.tick(i as f32);
-        }
-    }
-
-    fn fill_delay_constant(delay_line: &mut DelayLine, value: f32)
-    {
-        for _i in 0..delay_line.len() {
-            delay_line.tick(value);
-        }
-    }
-
     #[test]
-    fn test_grain()
-    {
+    fn test_grain() {
+        let mut grain = Grain::new(0, 10, 5, 0);
 
-        let mut delay_line = DelayLine::new(20);
-        fill_delay_ramp(&mut delay_line);
-
-        let mut grain = Grain::new(&delay_line, 10, 5, 0);
-
-        let expected = vec![10.0, 11.0, 12.0, 13.0, 14.0, 0.0];
+        let expected = vec![(9, 1.0), (8, 1.0), (7, 1.0), (6, 1.0), (5, 1.0), (0, 0.0)];
         let mut out = vec![];
         for _i in 0..expected.len() {
             // assert!(!grain.is_finished());
@@ -117,15 +108,21 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_fade()
-    {
+    fn test_grain_fade() {
+        let mut grain = Grain::new(0, 10, 9, 4);
 
-        let mut delay_line = DelayLine::new(20);
-        fill_delay_constant(&mut delay_line, 4.0);
-
-        let mut grain = Grain::new(&delay_line, 10, 9, 4);
-
-        let expected = vec![1.0, 2.0, 3.0, 4.0, 4.0, 4.0, 3.0, 2.0, 1.0, 0.0];
+        let expected = vec![
+            (9, 0.25),
+            (8, 0.5),
+            (7, 0.75),
+            (6, 1.0),
+            (5, 1.0),
+            (4, 1.0),
+            (3, 0.75),
+            (2, 0.5),
+            (1, 0.25),
+            (0, 0.0),
+        ];
         let mut out = vec![];
         for _i in 0..expected.len() {
             out.push(grain.tick());
@@ -135,14 +132,10 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_stop()
-    {
-        let mut delay_line = DelayLine::new(30);
-        fill_delay_constant(&mut delay_line, 4.0);
+    fn test_grain_stop() {
+        let mut grain = Grain::new(0, 20, 15, 4);
 
-        let mut grain = Grain::new(&delay_line, 20, 15, 4);
-
-        let expected = vec![1.0, 2.0, 3.0, 4.0, 4.0, 4.0];
+        let expected = vec![(19, 0.25), (18, 0.5), (17, 0.75), (16, 1.0), (15, 1.0)];
         let mut out = vec![];
         for _i in 0..expected.len() {
             out.push(grain.tick());
@@ -150,9 +143,10 @@ mod tests {
 
         assert_eq!(out, expected);
 
-        let expected_fade = vec![4.0, 3.0, 2.0, 1.0, 0.0];
-
+        // stopping the grain should fade it out
         grain.stop();
+        let expected_fade = vec![(14, 1.0), (13, 0.75), (12, 0.5), (11, 0.25), (10, 0.0)];
+
         let mut out = vec![];
         for _i in 0..expected_fade.len() {
             out.push(grain.tick());

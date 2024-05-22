@@ -9,6 +9,18 @@ pub fn lerp(a: f32, b: f32, f: f32) -> f32 {
     f * b + (1.0 - f) * a
 }
 
+fn fill_delay_ramp(delay_line: &mut DelayLine) {
+    for i in 0..delay_line.len() {
+        delay_line.tick(i as f32);
+    }
+}
+
+fn fill_delay_constant(delay_line: &mut DelayLine, value: f32) {
+    for _i in 0..delay_line.len() {
+        delay_line.tick(value);
+    }
+}
+
 #[allow(dead_code)]
 impl DelayLine {
     pub fn new(size: usize) -> DelayLine {
@@ -48,8 +60,8 @@ impl DelayLine {
         lerp(v0, v1, frac)
     }
 
-    pub fn len(& self) -> usize {
-        return self.buffer.len()
+    pub fn len(&self) -> usize {
+        return self.buffer.len();
     }
 }
 
