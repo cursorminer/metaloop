@@ -75,7 +75,6 @@ impl GrainLooper {
             if self.use_static_buffer {
                 out = self.grain_player.tick(&self.static_buffer, 0);
             } else {
-                // todo: rolling buffer somehow needs to be read in the right position even though grains assume a static buffer
                 out = self
                     .grain_player
                     .tick(&self.rolling_buffer, self.rolling_offset);
