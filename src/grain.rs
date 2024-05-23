@@ -86,6 +86,13 @@ impl Grain {
     pub fn is_scheduled(&self) -> bool {
         return self.scheduled_wait > 0;
     }
+
+    pub fn is_fading_in(&self) -> bool {
+        return self.window_pos < self.fade_duration;
+    }
+    pub fn is_fading_out(&self) -> bool {
+        return self.window_pos > (self.duration - self.fade_duration);
+    }
 }
 
 #[cfg(test)]
