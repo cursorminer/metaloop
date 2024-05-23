@@ -3,7 +3,6 @@ use crate::grain::Grain;
 use crate::scheduled_grain::ScheduledGrain;
 
 struct GrainPlayer {
-    delay_line: DelayLine,
     sample_rate: f32,
     grains: Vec<Grain>,
     fade_duration: usize,
@@ -13,9 +12,7 @@ struct GrainPlayer {
 #[allow(dead_code)]
 impl GrainPlayer {
     pub fn new(sample_rate: f32) -> GrainPlayer {
-        let delay_line = DelayLine::new(44100);
         GrainPlayer {
-            delay_line,
             sample_rate,
             grains: vec![],
             fade_duration: 0,
@@ -38,7 +35,7 @@ impl GrainPlayer {
         }
     }
 
-    pub fn tick(&mut self) -> f32 {
+    pub fn tick(&mut self, delay_line: &DelayLine) -> f32 {
         let mut out = 0.0;
 
         // accumulate output of all grains
@@ -51,7 +48,7 @@ impl GrainPlayer {
                 continue;
             }
             let (delay_pos, amplitude) = grain.tick();
-            out += self.delay_line.read(delay_pos) * amplitude;
+            out += delay_line.read(delay_pos) * amplitude;
         }
         out
     }
@@ -74,7 +71,8 @@ mod tests {
     #[test]
     fn test_grain_player() {
         let mut player = GrainPlayer::new(44100.0);
-        let out = player.tick();
+        let delay_line = DelayLine::new(44100);
+        let out = player.tick(delay_line);
         assert_eq!(out, 0.0);
         // fill the delay line with a constant value
         player.schedule_grain(2, 10, 4);
