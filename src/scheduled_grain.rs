@@ -24,7 +24,7 @@ impl<'a> ScheduledGrain<'a> {
         0.0
     }
 
-    pub fn is_scheduled(&self) -> bool {
+    pub fn is_waiting(&self) -> bool {
         self.countdown > 0
     }
 
@@ -43,10 +43,10 @@ mod tests {
         let grain = Grain::new(del, 10, 1, 0);
 
         let mut scheduled_grain = ScheduledGrain::new(grain, 0);
-        assert_eq!(scheduled_grain.is_scheduled(), true);
+        assert_eq!(scheduled_grain.is_waiting(), true);
         assert_eq!(scheduled_grain.is_finished(), false);
         assert_eq!(scheduled_grain.tick(), 0.0);
-        assert_eq!(scheduled_grain.is_scheduled(), false);
+        assert_eq!(scheduled_grain.is_waiting(), false);
         assert_eq!(scheduled_grain.is_finished(), true);
     }
 }

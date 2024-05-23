@@ -56,7 +56,7 @@ impl Grain {
             return (0, 0.0);
         }
 
-        if self.is_scheduled() {
+        if self.is_waiting() {
             self.scheduled_wait = self.scheduled_wait - 1;
             return (0, 0.0);
         }
@@ -80,10 +80,10 @@ impl Grain {
     }
 
     pub fn is_finished(&self) -> bool {
-        return self.delay_pos == self.end_delay;
+        return self.delay_pos == self.end_delay || self.duration == 0;
     }
 
-    pub fn is_scheduled(&self) -> bool {
+    pub fn is_waiting(&self) -> bool {
         return self.scheduled_wait > 0;
     }
 

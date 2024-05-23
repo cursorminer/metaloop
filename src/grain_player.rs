@@ -2,6 +2,8 @@ use crate::delay_line::{self, DelayLine};
 use crate::grain::Grain;
 use crate::scheduled_grain::ScheduledGrain;
 
+pub const MAX_GRAINS: usize = 10;
+
 pub struct GrainPlayer {
     sample_rate: f32,
     grains: Vec<Grain>,
@@ -12,9 +14,14 @@ pub struct GrainPlayer {
 #[allow(dead_code)]
 impl GrainPlayer {
     pub fn new(sample_rate: f32) -> GrainPlayer {
+        let mut grains_init = vec![];
+        for _ in 0..MAX_GRAINS {
+            grains_init.push(Grain::new(0, 0, 0, 0));
+        }
+
         GrainPlayer {
             sample_rate,
-            grains: vec![],
+            grains: grains_init,
             fade_duration: 0,
         }
     }
@@ -43,7 +50,7 @@ impl GrainPlayer {
             if grain.is_finished() {
                 continue;
             }
-            if grain.is_scheduled() {
+            if grain.is_waiting() {
                 grain.tick();
                 continue;
             }
@@ -54,13 +61,24 @@ impl GrainPlayer {
     }
 
     fn num_scheduled_grains(&self) -> usize {
-        let mut count = 0;
-        for grain in self.grains.iter() {
-            if grain.is_scheduled() {
-                count += 1;
-            }
-        }
-        count
+        self.grains
+            .iter()
+            .filter(|grain| grain.is_waiting())
+            .count()
+    }
+
+    fn num_playing_grains(&self) -> usize {
+        self.grains
+            .iter()
+            .filter(|grain| !grain.is_finished() && !grain.is_waiting())
+            .count()
+    }
+
+    fn num_finished_grains(&self) -> usize {
+        self.grains
+            .iter()
+            .filter(|grain| grain.is_finished())
+            .count()
     }
 }
 
@@ -72,10 +90,31 @@ mod tests {
     fn test_grain_player() {
         let mut player = GrainPlayer::new(44100.0);
         let delay_line = DelayLine::new(44100);
-        let out = player.tick(delay_line, 0);
+        let out = player.tick(&delay_line, 0);
+
         assert_eq!(out, 0.0);
-        // fill the delay line with a constant value
+
         player.schedule_grain(2, 10, 4);
+
         assert_eq!(player.num_scheduled_grains(), 1);
+        assert_eq!(player.num_playing_grains(), 0);
+        assert_eq!(player.num_finished_grains(), MAX_GRAINS - 1);
+
+        // tick past wait time
+        for _ in 0..2 {
+            player.tick(&delay_line, 0);
+        }
+
+        assert_eq!(player.num_scheduled_grains(), 0);
+        assert_eq!(player.num_playing_grains(), 1);
+        assert_eq!(player.num_finished_grains(), MAX_GRAINS - 1);
+
+        // tick past duration
+        for _ in 0..4 {
+            player.tick(&delay_line, 0);
+        }
+        assert_eq!(player.num_scheduled_grains(), 0);
+        assert_eq!(player.num_playing_grains(), 0);
+        assert_eq!(player.num_finished_grains(), MAX_GRAINS);
     }
 }
