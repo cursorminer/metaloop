@@ -22,17 +22,12 @@ impl GrainPlayer {
         }
     }
 
-    pub fn set_fade_time(&mut self, seconds: f32) {
-        self.fade_duration = (seconds * self.sample_rate) as usize;
+    pub fn set_fade_time(&mut self, fade: usize) {
+        self.fade_duration = fade;
     }
 
-    pub fn schedule_grain(&mut self, wait: f32, offset: f32, duration: f32) {
-        let grain = Grain::new(
-            (wait * self.sample_rate) as usize,
-            (offset * self.sample_rate) as usize,
-            (duration * self.sample_rate) as usize,
-            self.fade_duration,
-        );
+    pub fn schedule_grain(&mut self, wait: usize, offset: usize, duration: usize) {
+        let grain = Grain::new(wait, offset, duration, self.fade_duration);
 
         // replace a finished grain
         for i in 0..self.grains.len() {
@@ -60,6 +55,16 @@ impl GrainPlayer {
         }
         out
     }
+
+    fn num_scheduled_grains(&self) -> usize {
+        let mut count = 0;
+        for grain in self.grains.iter() {
+            if grain.is_scheduled() {
+                count += 1;
+            }
+        }
+        count
+    }
 }
 
 #[cfg(test)]
@@ -71,5 +76,8 @@ mod tests {
         let mut player = GrainPlayer::new(44100.0);
         let out = player.tick();
         assert_eq!(out, 0.0);
+        // fill the delay line with a constant value
+        player.schedule_grain(2, 10, 4);
+        assert_eq!(player.num_scheduled_grains(), 1);
     }
 }
