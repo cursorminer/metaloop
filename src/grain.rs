@@ -24,7 +24,8 @@ pub struct Grain {
     end_delay: usize,
     duration: usize,
     fade_duration: usize,
-    window_pos: usize,
+    play_head_pos: usize,
+    offset: usize,
 }
 
 #[allow(dead_code)]
@@ -47,7 +48,8 @@ impl Grain {
             end_delay: offset - duration,
             duration: duration,
             fade_duration: actual_fade,
-            window_pos: 0,
+            play_head_pos: 0,
+            offset: offset,
         }
     }
 
@@ -62,20 +64,20 @@ impl Grain {
         }
 
         self.delay_pos = self.delay_pos - 1;
-        self.window_pos = self.window_pos + 1; // starts at one so the window is non-zero immediately
+        self.play_head_pos = self.play_head_pos + 1; // starts at one so the window is non-zero immediately
 
-        let win = trapezoid_window(self.window_pos, self.duration, self.fade_duration);
+        let win = trapezoid_window(self.play_head_pos, self.duration, self.fade_duration);
         (self.delay_pos, win)
     }
 
     pub fn stop(&mut self) {
         // if already fading out don't stop it
-        if self.window_pos > (self.duration - self.fade_duration) {
+        if self.play_head_pos > (self.duration - self.fade_duration) {
             return;
         }
 
         // otherwise tweak the values so that the grain fades now
-        self.duration = self.window_pos + self.fade_duration;
+        self.duration = self.play_head_pos + self.fade_duration;
         self.end_delay = self.delay_pos + self.fade_duration;
     }
 
@@ -87,11 +89,24 @@ impl Grain {
         return self.scheduled_wait > 0;
     }
 
+    pub fn is_playing(&self) -> bool {
+        return !self.is_finished() && !self.is_waiting();
+    }
+
     pub fn is_fading_in(&self) -> bool {
-        return self.window_pos < self.fade_duration;
+        return self.play_head_pos < self.fade_duration;
     }
     pub fn is_fading_out(&self) -> bool {
-        return self.window_pos > (self.duration - self.fade_duration);
+        return self.play_head_pos > (self.duration - self.fade_duration);
+    }
+    pub fn play_head_pos(&self) -> usize {
+        return self.play_head_pos;
+    }
+    pub fn offset(&self) -> usize {
+        return self.offset;
+    }
+    pub fn duration(&self) -> usize {
+        return self.duration;
     }
 }
 

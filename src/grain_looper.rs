@@ -69,7 +69,7 @@ impl GrainLooper {
         let mut out = 0.0;
 
         if self.is_looping {
-            self.ticks_till_next_loop -= 1;
+            self.tick_next_loop_trigger();
             self.tick_static_buffer();
 
             if self.use_static_buffer {
@@ -102,5 +102,22 @@ impl GrainLooper {
         if self.rolling_offset >= LOOPABLE_REGION_LENGTH {
             self.use_static_buffer = true;
         }
+    }
+
+    fn tick_next_loop_trigger(&mut self) {
+        if self.ticks_till_next_loop == 0 {
+            // schedule the next loop, using the same args as the previous loop
+            // todo actually offset and duration could be a dynamic value at some point so could change here
+            let new_grain = self.grain_player.most_recent_grain();
+
+            if let Some(new_grain) = new_grain {
+                self.grain_player
+                    .schedule_grain(0, new_grain.offset(), new_grain.duration());
+                self.ticks_till_next_loop = LOOPABLE_REGION_LENGTH;
+            } else {
+                assert!(false, "no looped grain to schedule");
+            }
+        }
+        self.ticks_till_next_loop -= 1;
     }
 }

@@ -70,7 +70,7 @@ impl GrainPlayer {
     fn num_playing_grains(&self) -> usize {
         self.grains
             .iter()
-            .filter(|grain| !grain.is_finished() && !grain.is_waiting())
+            .filter(|grain| grain.is_playing())
             .count()
     }
 
@@ -79,6 +79,13 @@ impl GrainPlayer {
             .iter()
             .filter(|grain| grain.is_finished())
             .count()
+    }
+
+    pub fn most_recent_grain(&self) -> Option<&Grain> {
+        self.grains
+            .iter()
+            .filter(|grain| grain.is_playing())
+            .min_by_key(|grain| grain.play_head_pos())
     }
 }
 
