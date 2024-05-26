@@ -1,6 +1,5 @@
 use crate::delay_line::{self, DelayLine};
 use crate::grain::Grain;
-use crate::scheduled_grain::ScheduledGrain;
 
 pub const MAX_GRAINS: usize = 10;
 
