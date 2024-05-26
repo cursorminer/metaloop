@@ -50,8 +50,10 @@ impl Grain {
         }
 
         if self.play_head_pos == 0 && self.scheduled_wait == 0 {
+            self.fade_ramp.set(0.0);
             self.fade_ramp.ramp(1.0, self.fade_duration);
-        } else if self.play_head_pos > (self.duration - self.fade_duration) {
+        } else if self.play_head_pos == (self.duration - self.fade_duration) {
+            self.fade_ramp.set(1.0);
             self.fade_ramp.ramp(0.0, self.fade_duration);
         }
 
@@ -105,6 +107,7 @@ impl Grain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_abs_diff_eq;
 
     #[test]
     fn test_grain() {
@@ -146,19 +149,18 @@ mod tests {
 
     #[test]
     fn test_grain_fade() {
-        let mut grain = Grain::new(0, 10, 9, 4);
+        let mut grain = Grain::new(0, 10, 9, 3);
 
         let expected = vec![
-            (9, 0.2),
-            (8, 0.4),
-            (7, 0.6),
-            (6, 0.8),
+            (9, 0.25),
+            (8, 0.5),
+            (7, 0.75),
+            (6, 1.0),
             (5, 1.0),
             (4, 1.0),
-            (3, 0.8),
-            (2, 0.6),
-            (1, 0.4),
-            (0, 0.2),
+            (3, 0.75),
+            (2, 0.5),
+            (1, 0.25),
             (0, 0.0),
         ];
         let mut out = vec![];
