@@ -148,7 +148,7 @@ mod tests {
         assert_eq!(out, vec![0.0, 0.0, 10.0, 11.0, 12.0, 13.0, 0.0]);
 
         out.clear();
-        player.set_fade_time(2);
+        player.set_fade_time(1);
         player.schedule_grain(2, 10, 4);
 
         // tick past wait time

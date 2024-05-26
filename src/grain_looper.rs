@@ -94,6 +94,7 @@ impl GrainLooper {
         self.ticks_till_next_loop = wait + self.loop_duration;
         self.rolling_offset = 0;
         self.use_static_buffer = false;
+        self.dry_ramp.set(1.0);
         self.dry_ramp.ramp(0.0, self.fade_duration);
     }
 
@@ -102,12 +103,13 @@ impl GrainLooper {
         self.ticks_till_next_loop = std::usize::MAX;
         // start a fade back to dry
         self.grain_player.stop_all_grains();
+        self.dry_ramp.set(0.0);
         self.dry_ramp.ramp(1.0, self.fade_duration);
     }
 
     pub fn tick(&mut self, input: f32) -> f32 {
         self.rolling_buffer.tick(input);
-        let mut looped = 0.0;
+        let looped;
 
         let dry = input;
 
@@ -124,7 +126,7 @@ impl GrainLooper {
 
         let dry_level = self.dry_ramp.tick();
         println!("dry_level: {}", dry_level);
-        looped + self.dry_ramp.tick() * dry
+        looped + dry_level * dry
     }
 
     // this fills the static buffer with a copy of the rolling buffer, so
@@ -247,26 +249,35 @@ mod tests {
     fn test_grain_looper_fade() {
         let mut looper = GrainLooper::new_with_length(10.0, 20);
         let mut out = vec![];
-        for i in 0..8 {
+
+        let loop_start = 6;
+        let loop_stop = 12;
+
+        for i in 0..loop_start {
             out.push(looper.tick(i as f32));
         }
         // start looping immediately
         // two samples fade
         looper.set_fade_time(0.2);
-        // set offset to be the loop length to loop the most recent 5 samples
-        looper.set_loop_offset(0.5);
-        looper.set_loop_duration(0.5);
+        // set offset to be the loop length to loop the most recent 4 samples
+        looper.set_loop_offset(0.4);
+        looper.set_loop_duration(0.4);
         looper.start_looping(0.0);
-        for i in 8..15 {
+
+        for i in loop_start..loop_stop {
             out.push(looper.tick(i as f32));
         }
         // first loop is same as dry
         // but the next will fade between 0,1,2,3,4,5,6,7,8       4,5,6,7,8,9
-        //                                       |       |       |       |
-        // and                                            4,5,6,7,8,9
+        //                                   |       |       |       |
+        // and                                        0,1,2,3,4,5,
+        let first_faded = 6.0 * 2.0 / 3.0;
+        let second_faded = 7.0 / 3.0 + 2.0 / 3.0;
+        let third_faded = 4.0 * 2.0 / 3.0;
+        let fourth_faded = 5.0 / 3.0 + 2.0 / 3.0;
         assert_eq!(
             out,
-            vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 0.5, 2.0, 3.0, 4.0, 5.0, 6.5, 5.5]
+            vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, first_faded, second_faded, 2.0, 3.0, third_faded, fourth_faded, 2.0, 3.0 ,third_faded, fourth_faded]
         );
 
         // stop looping

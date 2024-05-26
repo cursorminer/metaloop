@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_grain_stop() {
-        let mut grain = Grain::new(0, 20, 15, 4);
+        let mut grain = Grain::new(0, 20, 15, 3);
 
         let expected = vec![(19, 0.25), (18, 0.5), (17, 0.75), (16, 1.0), (15, 1.0)];
         let mut out = vec![];
@@ -185,7 +185,7 @@ mod tests {
 
         // stopping the grain should fade it out
         grain.stop();
-        let expected_fade = vec![(14, 1.0), (13, 0.75), (12, 0.5), (11, 0.25), (10, 0.0)];
+        let expected_fade = vec![(14, 0.75), (13, 0.5), (12, 0.25), (11, 0.0), (10, 0.0)];
 
         let mut out = vec![];
         for _i in 0..expected_fade.len() {

@@ -47,7 +47,11 @@ impl RampedValue {
 
 #[cfg(test)]
 mod tests {
+    use approx::assert_abs_diff_eq;
+
     use super::*;
+
+    const EPS: f32 = 0.0001;
 
     #[test]
     fn test_ramped_value() {
@@ -57,11 +61,14 @@ mod tests {
         assert_eq!(ramped_value.tick(), 0.0);
 
         ramped_value.ramp(1.0, 4);
-        assert_eq!(ramped_value.tick(), 0.2);
-        assert_eq!(ramped_value.tick(), 0.4);
-        assert_eq!(ramped_value.tick(), 0.6);
-        assert_eq!(ramped_value.tick(), 0.8);
-        assert_eq!(ramped_value.tick(), 1.0);
+        assert_abs_diff_eq!(ramped_value.tick(), 0.2, epsilon = EPS);
+        assert_abs_diff_eq!(ramped_value.tick(), 0.4, epsilon = EPS);
+        assert_abs_diff_eq!(ramped_value.tick(), 0.6, epsilon = EPS);
+        assert_abs_diff_eq!(ramped_value.tick(), 0.8, epsilon = EPS);
+        assert_abs_diff_eq!(ramped_value.tick(), 1.0, epsilon = EPS);
+        assert_abs_diff_eq!(ramped_value.tick(), 1.0, epsilon = EPS);
+    
+        
     }
 
     #[test]
