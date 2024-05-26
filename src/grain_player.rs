@@ -1,10 +1,10 @@
-use crate::delay_line::{self, DelayLine};
+use crate::delay_line::fill_delay_ramp;
+use crate::delay_line::DelayLine;
 use crate::grain::Grain;
 
 pub const MAX_GRAINS: usize = 10;
 
 pub struct GrainPlayer {
-    sample_rate: f32,
     grains: Vec<Grain>,
     fade_duration: usize,
 }
@@ -12,14 +12,13 @@ pub struct GrainPlayer {
 // schedule and play grains
 #[allow(dead_code)]
 impl GrainPlayer {
-    pub fn new(sample_rate: f32) -> GrainPlayer {
+    pub fn new() -> GrainPlayer {
         let mut grains_init = vec![];
         for _ in 0..MAX_GRAINS {
             grains_init.push(Grain::new(0, 0, 0, 0));
         }
 
         GrainPlayer {
-            sample_rate,
             grains: grains_init,
             fade_duration: 0,
         }
@@ -59,6 +58,12 @@ impl GrainPlayer {
         out
     }
 
+    pub fn stop_all_grains(&mut self) {
+        for grain in self.grains.iter_mut() {
+            grain.stop();
+        }
+    }
+
     fn num_scheduled_grains(&self) -> usize {
         self.grains
             .iter()
@@ -93,12 +98,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_grain_player() {
-        let mut player = GrainPlayer::new(44100.0);
+    fn test_grain_player_state() {
+        let mut player = GrainPlayer::new();
         let delay_line = DelayLine::new(44100);
-        let out = player.tick(&delay_line, 0);
-
-        assert_eq!(out, 0.0);
 
         player.schedule_grain(2, 10, 4);
 
@@ -122,5 +124,43 @@ mod tests {
         assert_eq!(player.num_scheduled_grains(), 0);
         assert_eq!(player.num_playing_grains(), 0);
         assert_eq!(player.num_finished_grains(), MAX_GRAINS);
+    }
+
+    #[test]
+    fn test_grain_player_output() {
+        let mut player = GrainPlayer::new();
+        let mut delay_line = DelayLine::new(20);
+        fill_delay_ramp(&mut delay_line);
+        let mut out = vec![];
+
+        player.schedule_grain(2, 10, 4);
+
+        // tick past wait time
+        for _ in 0..2 {
+            out.push(player.tick(&delay_line, 0));
+        }
+
+        // tick past duration
+        for _ in 0..5 {
+            out.push(player.tick(&delay_line, 0));
+        }
+
+        assert_eq!(out, vec![0.0, 0.0, 10.0, 11.0, 12.0, 13.0, 0.0]);
+
+        out.clear();
+        player.set_fade_time(2);
+        player.schedule_grain(2, 10, 4);
+
+        // tick past wait time
+        for _ in 0..2 {
+            out.push(player.tick(&delay_line, 0));
+        }
+
+        // tick past duration
+        for _ in 0..5 {
+            out.push(player.tick(&delay_line, 0));
+        }
+        // as above but one sample is faded
+        assert_eq!(out, vec![0.0, 0.0, 5.0, 11.0, 12.0, 6.5, 0.0]);
     }
 }

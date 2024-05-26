@@ -1,20 +1,4 @@
-fn trapezoid_window(pos: usize, duration: usize, fade: usize) -> f32 {
-    if fade == 0 {
-        return 1.0;
-    }
-
-    if pos < fade {
-        let frac = (pos) as f32 / fade as f32;
-        return frac;
-    } else if pos > duration {
-        return 0.0;
-    } else if pos <= (duration - fade) {
-        return 1.0;
-    } else {
-        let frac = ((duration + 1) - pos) as f32 / fade as f32;
-        return frac;
-    }
-}
+use crate::ramped_value::RampedValue;
 
 // a rather short lived thing that plays a single faded grain
 // the duration includes two fade durations
@@ -26,6 +10,7 @@ pub struct Grain {
     fade_duration: usize,
     play_head_pos: usize,
     offset: usize,
+    fade_ramp: RampedValue,
 }
 
 #[allow(dead_code)]
@@ -50,6 +35,7 @@ impl Grain {
             fade_duration: actual_fade,
             play_head_pos: 0,
             offset: offset,
+            fade_ramp: RampedValue::new(1.0),
         }
     }
 
@@ -63,10 +49,16 @@ impl Grain {
             return (0, 0.0);
         }
 
-        self.delay_pos = self.delay_pos - 1;
-        self.play_head_pos = self.play_head_pos + 1; // starts at one so the window is non-zero immediately
+        if self.play_head_pos == 0 && self.scheduled_wait == 0 {
+            self.fade_ramp.ramp(1.0, self.fade_duration);
+        } else if self.play_head_pos > (self.duration - self.fade_duration) {
+            self.fade_ramp.ramp(0.0, self.fade_duration);
+        }
 
-        let win = trapezoid_window(self.play_head_pos, self.duration, self.fade_duration);
+        self.delay_pos = self.delay_pos - 1;
+        self.play_head_pos = self.play_head_pos + 1;
+
+        let win = self.fade_ramp.tick();
         (self.delay_pos, win)
     }
 
@@ -130,19 +122,43 @@ mod tests {
     }
 
     #[test]
+    fn test_grain_wait() {
+        let mut grain = Grain::new(1, 10, 5, 0);
+
+        let expected = vec![
+            (0, 0.0),
+            (9, 1.0),
+            (8, 1.0),
+            (7, 1.0),
+            (6, 1.0),
+            (5, 1.0),
+            (0, 0.0),
+        ];
+        let mut out = vec![];
+        for _i in 0..expected.len() {
+            // assert!(!grain.is_finished());
+            out.push(grain.tick());
+        }
+
+        assert_eq!(out, expected);
+        assert!(grain.is_finished());
+    }
+
+    #[test]
     fn test_grain_fade() {
         let mut grain = Grain::new(0, 10, 9, 4);
 
         let expected = vec![
-            (9, 0.25),
-            (8, 0.5),
-            (7, 0.75),
-            (6, 1.0),
+            (9, 0.2),
+            (8, 0.4),
+            (7, 0.6),
+            (6, 0.8),
             (5, 1.0),
             (4, 1.0),
-            (3, 0.75),
-            (2, 0.5),
-            (1, 0.25),
+            (3, 0.8),
+            (2, 0.6),
+            (1, 0.4),
+            (0, 0.2),
             (0, 0.0),
         ];
         let mut out = vec![];

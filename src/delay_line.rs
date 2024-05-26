@@ -9,13 +9,13 @@ pub fn lerp(a: f32, b: f32, f: f32) -> f32 {
     f * b + (1.0 - f) * a
 }
 
-fn fill_delay_ramp(delay_line: &mut DelayLine) {
+pub fn fill_delay_ramp(delay_line: &mut DelayLine) {
     for i in 0..delay_line.len() {
         delay_line.tick(i as f32);
     }
 }
 
-fn fill_delay_constant(delay_line: &mut DelayLine, value: f32) {
+pub fn fill_delay_constant(delay_line: &mut DelayLine, value: f32) {
     for _i in 0..delay_line.len() {
         delay_line.tick(value);
     }
@@ -40,7 +40,11 @@ impl DelayLine {
     }
 
     pub fn read(&self, delay_samples: usize) -> f32 {
-        assert!(delay_samples < self.buffer.len());
+        assert!(
+            delay_samples < self.buffer.len(),
+            "delay was: {:?}",
+            delay_samples
+        );
 
         let read_index =
             (self.write_index + self.buffer.len() - delay_samples - 1) % self.buffer.len();
@@ -79,6 +83,7 @@ mod tests {
     fn test_delay_line() {
         let mut delay_line = DelayLine::new(4);
         delay_line.reset();
+        assert_eq!(delay_line.read(3), 0.0);
         delay_line.tick(1.0);
         delay_line.tick(2.0);
         delay_line.tick(3.0);
