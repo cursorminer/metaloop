@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn test_grain_player_state() {
         let mut player = GrainPlayer::new();
-        let delay_line = DelayLine::new(44100);
+        let delay_line = DelayLine::new(100);
 
         player.schedule_grain(2, 10, 4);
 
@@ -124,6 +124,35 @@ mod tests {
         assert_eq!(player.num_scheduled_grains(), 0);
         assert_eq!(player.num_playing_grains(), 0);
         assert_eq!(player.num_finished_grains(), MAX_GRAINS);
+    }
+
+    #[test]
+    fn test_grain_player_stop_all() {
+        let mut player = GrainPlayer::new();
+        let delay_line = DelayLine::new(100);
+        player.set_fade_time(2);
+
+        player.schedule_grain(0, 10, 4);
+        player.schedule_grain(0, 10, 10);
+
+        assert_eq!(player.num_playing_grains(), 2);
+
+        player.tick(&delay_line, 0);
+
+        assert_eq!(player.num_playing_grains(), 2);
+
+        player.stop_all_grains();
+
+        player.tick(&delay_line, 0);
+
+        // grains keep going until fade is finished
+        assert_eq!(player.num_playing_grains(), 2);
+
+        player.tick(&delay_line, 0);
+        player.tick(&delay_line, 0);
+
+        assert_eq!(player.num_playing_grains(), 0);
+        assert_eq!(player.num_finished_grains(), 10);
     }
 
     #[test]

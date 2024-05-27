@@ -311,7 +311,13 @@ mod tests {
             out.push(looper.tick(i as f32));
         }
 
-        // // expect the dry to fade back in from whatever the loop was doing
-        // all_near(&out, &vec![23.0, 23.0, 22.0, 23.0, 24.0], 0.0001);
+        // expect the dry to fade back in from whatever the loop was doing
+        let fifth_fade = 15.0 / 3.0 + 2.0 * 2.0 / 3.0;
+        let sixth_fade = 16.0 * 2.0 / 3.0 + 3.0 / 3.0;
+        all_near(
+            &out,
+            &vec![fifth_fade, sixth_fade, 17.0, 18.0, 19.0],
+            0.0001,
+        );
     }
 }

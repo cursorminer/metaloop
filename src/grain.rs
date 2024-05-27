@@ -72,7 +72,7 @@ impl Grain {
 
         // otherwise tweak the values so that the grain fades now
         self.duration = self.play_head_pos + self.fade_duration;
-        self.end_delay = self.delay_pos + self.fade_duration;
+        self.end_delay = self.delay_pos - self.fade_duration;
     }
 
     pub fn is_finished(&self) -> bool {
@@ -185,7 +185,7 @@ mod tests {
 
         // stopping the grain should fade it out
         grain.stop();
-        let expected_fade = vec![(14, 0.75), (13, 0.5), (12, 0.25), (11, 0.0), (10, 0.0)];
+        let expected_fade = vec![(14, 0.75), (13, 0.5), (12, 0.25), (0, 0.0), (0, 0.0)];
 
         let mut out = vec![];
         for _i in 0..expected_fade.len() {
@@ -193,5 +193,6 @@ mod tests {
         }
 
         assert_eq!(out, expected_fade);
+        assert_eq!(grain.is_finished(), true);
     }
 }
