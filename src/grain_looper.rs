@@ -383,4 +383,50 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn test_grain_looper_switch_to_static_fade() {
+        // like above but with a tricky thing that the fade needs to be appended to the static buffer
+        let mut looper = GrainLooper::new_with_length(8.0, 8);
+        let mut out = vec![];
+
+        let loop_start = 4;
+        let loopable_region_length = 4;
+
+        // fill the rolling buffer with 4 samples
+        for i in 0..loop_start {
+            out.push(looper.tick((i + 10) as f32));
+        }
+        // start looping those 4 samples
+        looper.set_fade_time(0.25);
+        looper.set_loop_offset(0.5);
+        looper.set_loop_duration(0.5);
+        looper.start_looping(0.0);
+
+        assert!(!looper.is_using_static_buffer());
+
+        // now the static buffer starts filling
+        for i in loop_start..loop_start + loopable_region_length {
+            out.push(looper.tick((i + 10) as f32));
+        }
+        assert!(looper.is_using_static_buffer());
+
+        // check the output loops as normal
+        for i in loop_start + loopable_region_length..20 {
+            out.push(looper.tick((i + 10) as f32));
+        }
+        // expect the contents of static buffer to be  the first 4 samples
+        let expected_static = vec![13.0, 12.0, 11.0, 10.0];
+        let static_buffer = looper.static_buffer();
+        for i in 0..4 {
+            assert_eq!(static_buffer.read(i), expected_static[i]);
+        }
+        assert_eq!(
+            out,
+            vec![
+                10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0,
+                12.0, 13.0, 10.0, 11.0, 12.0, 13.0
+            ]
+        );
+    }
 }
