@@ -1,4 +1,3 @@
-use crate::delay_line::fill_delay_ramp;
 use crate::delay_line::DelayLine;
 use crate::grain::Grain;
 
@@ -40,7 +39,7 @@ impl GrainPlayer {
         }
     }
 
-    pub fn tick(&mut self, delay_line: &DelayLine, rolling_offset: usize) -> f32 {
+    pub fn tick(&mut self, delay_line: &DelayLine<f32>, rolling_offset: usize) -> f32 {
         let mut out = 0.0;
 
         // accumulate output of all grains
@@ -96,6 +95,7 @@ impl GrainPlayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::delay_line::fill_delay_ramp;
 
     #[test]
     fn test_grain_player_state() {

@@ -1,8 +1,13 @@
+#![allow(dead_code)]
 // delay line
 use std::ops::{Add, Mul, Sub};
 
-pub struct DelayLine {
-    buffer: Vec<f32>,
+pub struct DelayLine<T>
+where
+    T: Copy,
+    T: Default,
+{
+    buffer: Vec<T>,
     write_index: usize,
 }
 
@@ -14,23 +19,32 @@ where
     f * (b - a) + a
 }
 
-pub fn fill_delay_ramp(delay_line: &mut DelayLine) {
+pub fn fill_delay_ramp(delay_line: &mut DelayLine<f32>) {
     for i in 0..delay_line.len() {
         delay_line.tick(i as f32);
     }
 }
 
-pub fn fill_delay_constant(delay_line: &mut DelayLine, value: f32) {
+pub fn fill_delay_constant<T>(delay_line: &mut DelayLine<T>, value: T)
+where
+    T: Copy,
+    T: Default,
+    DelayLine<T>: ExactSizeIterator,
+{
     for _i in 0..delay_line.len() {
         delay_line.tick(value);
     }
 }
 
 #[allow(dead_code)]
-impl DelayLine {
-    pub fn new(size: usize) -> DelayLine {
+impl<T> DelayLine<T>
+where
+    T: Copy,
+    T: Default,
+{
+    pub fn new(size: usize) -> DelayLine<T> {
         DelayLine {
-            buffer: vec![0.0; size],
+            buffer: vec![Default::default(); size],
             write_index: 0,
         }
     }
@@ -39,12 +53,12 @@ impl DelayLine {
         self.write_index = 0;
     }
 
-    pub fn tick(&mut self, value: f32) {
+    pub fn tick(&mut self, value: T) {
         self.buffer[self.write_index] = value;
         self.write_index = (self.write_index + 1) % self.buffer.len();
     }
 
-    pub fn read(&self, delay_samples: usize) -> f32 {
+    pub fn read(&self, delay_samples: usize) -> T {
         assert!(
             delay_samples < self.buffer.len(),
             "delay was: {:?}",
@@ -57,6 +71,15 @@ impl DelayLine {
         value
     }
 
+    pub fn len(&self) -> usize {
+        return self.buffer.len();
+    }
+}
+
+#[allow(dead_code)]
+impl DelayLine<f32> {
+    // todo: implement linear interpolation for more generic types than f32
+    // somehow would involve floor etc for other types
     pub fn read_interpolated(&self, delay_samples: f32) -> f32 {
         let i0 = delay_samples.floor() as usize;
         let i1 = delay_samples.ceil() as usize;
@@ -68,12 +91,7 @@ impl DelayLine {
 
         lerp(v0, v1, frac)
     }
-
-    pub fn len(&self) -> usize {
-        return self.buffer.len();
-    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

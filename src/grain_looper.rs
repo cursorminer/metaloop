@@ -17,10 +17,10 @@ struct GrainLooper {
     sample_rate: f32,
     ticks_till_next_loop: usize,
     // this is the buffer that is always being written to
-    rolling_buffer: DelayLine,
+    rolling_buffer: DelayLine<f32>,
     // this is the buffer that is only written to when looping, and when
     //the loopable region goes out of scope of the rolling buffer we switch to this one
-    static_buffer: DelayLine,
+    static_buffer: DelayLine<f32>,
 
     // ticks up as the rolling buffer scrolls left
     rolling_offset: usize,
@@ -166,7 +166,7 @@ impl GrainLooper {
         self.use_static_buffer
     }
 
-    fn static_buffer(&self) -> &DelayLine {
+    fn static_buffer(&self) -> &DelayLine<f32> {
         &self.static_buffer
     }
 
