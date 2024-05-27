@@ -40,7 +40,7 @@ impl GrainLooper {
 
     fn new_with_length(sample_rate: f32, delay_line_length: usize) -> GrainLooper {
         let delay_line_rolling = DelayLine::new(delay_line_length);
-        let delay_line_static = DelayLine::new(delay_line_length);
+        let delay_line_static = DelayLine::new(delay_line_length / 2);
         GrainLooper {
             grain_player: GrainPlayer::new(),
             is_looping: false,
@@ -110,12 +110,12 @@ impl GrainLooper {
 
     pub fn tick(&mut self, input: f32) -> f32 {
         self.rolling_buffer.tick(input);
+        self.rolling_offset += 1;
         let looped;
 
         let dry = input;
 
         self.tick_next_loop_trigger();
-        self.tick_static_buffer_copy();
 
         if self.use_static_buffer {
             looped = self.grain_player.tick(&self.static_buffer, 0);
@@ -124,6 +124,7 @@ impl GrainLooper {
                 .grain_player
                 .tick(&self.rolling_buffer, self.rolling_offset);
         }
+        self.tick_static_buffer_copy();
 
         let dry_level = self.dry_ramp.tick();
         looped + dry_level * dry
@@ -132,20 +133,20 @@ impl GrainLooper {
     // this fills the static buffer with a copy of the rolling buffer, so
     // that when the loopable region exits the rolling buffer, we can use the static one
     fn tick_static_buffer_copy(&mut self) {
-        // don't tick it if its full and we're using it
-        if self.use_static_buffer {
+        // don't tick it if its full and we're using it, or if we're not looping
+        if self.use_static_buffer || !self.is_looping {
             return;
         }
         // fill the static buffer with the loop region
         // we do this by reading the rolling buffer at a delay of the loopable region
         self.static_buffer
             .tick(self.rolling_buffer.read(self.loopable_region_length));
-        self.rolling_offset += 1;
 
         // when the rolling offset has reached the end of the loopable region
         // we switch to the static buffer
         if self.rolling_offset >= self.loopable_region_length {
             self.use_static_buffer = true;
+            self.rolling_offset = 0;
         }
     }
 
@@ -157,18 +158,27 @@ impl GrainLooper {
                 self.loop_duration + self.fade_duration,
             );
             self.ticks_till_next_loop = self.loop_duration;
-        } else {
-            self.ticks_till_next_loop -= 1;
         }
+        self.ticks_till_next_loop -= 1;
     }
 
     fn is_using_static_buffer(&self) -> bool {
         self.use_static_buffer
     }
+
+    fn static_buffer(&self) -> &DelayLine {
+        &self.static_buffer
+    }
+
+    fn num_playing_grains(&self) -> usize {
+        self.grain_player.num_playing_grains()
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::*;
     use approx::assert_abs_diff_eq;
 
@@ -194,7 +204,7 @@ mod tests {
         let mut looper = GrainLooper::new_with_length(10.0, 20);
         let mut out = vec![];
         for i in 0..5 {
-            out.push(looper.tick(i as f32));
+            out.push(looper.tick((i + 10) as f32));
         }
 
         looper.set_fade_time(0.0);
@@ -203,12 +213,15 @@ mod tests {
         looper.set_loop_offset(0.5);
         looper.set_loop_duration(0.5);
         looper.start_looping(0.0);
-        for i in 5..15 {
-            out.push(looper.tick(i as f32));
+        for i in 5..20 {
+            out.push(looper.tick((i + 10) as f32));
         }
         assert_eq!(
             out,
-            vec![0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 1.0, 2.0, 3.0, 4.0]
+            vec![
+                10.0, 11.0, 12.0, 13.0, 14.0, 10.0, 11.0, 12.0, 13.0, 14.0, 10.0, 11.0, 12.0, 13.0,
+                14.0, 10.0, 11.0, 12.0, 13.0, 14.0
+            ]
         );
 
         out.clear();
@@ -226,7 +239,7 @@ mod tests {
         // when we loop a DC signal we expect the fades to maintain the DC level
         let mut looper = GrainLooper::new_with_length(10.0, 50);
         let mut out = vec![];
-        for i in 0..8 {
+        for _i in 0..8 {
             out.push(looper.tick(1.0));
         }
         // start looping immediately
@@ -236,7 +249,7 @@ mod tests {
         looper.set_loop_offset(0.5);
         looper.set_loop_duration(0.5);
         looper.start_looping(0.0);
-        for i in 8..15 {
+        for _i in 8..15 {
             out.push(looper.tick(1.0));
         }
 
@@ -248,7 +261,7 @@ mod tests {
         // stop looping
         out.clear();
         looper.stop_looping();
-        for i in 15..20 {
+        for _i in 15..20 {
             out.push(looper.tick(1.0));
         }
 
@@ -335,8 +348,8 @@ mod tests {
         let loopable_region_length = 4;
 
         // fill the rolling buffer with 4 samples
-        for i in 0..4 {
-            out.push(looper.tick(i as f32));
+        for i in 0..loop_start {
+            out.push(looper.tick((i + 10) as f32));
         }
         // start looping those 4 samples
         looper.set_fade_time(0.0);
@@ -345,19 +358,29 @@ mod tests {
         looper.start_looping(0.0);
 
         assert!(!looper.is_using_static_buffer());
-        // check that the loop keeps going after the rolling buffer is full
-        for i in 4..8 {
-            out.push(looper.tick(i as f32));
+
+        // now the static buffer starts filling
+        for i in loop_start..loop_start + loopable_region_length {
+            out.push(looper.tick((i + 10) as f32));
         }
         assert!(looper.is_using_static_buffer());
 
         // check the output loops as normal
-        for i in 8..16 {
-            out.push(looper.tick(i as f32));
+        for i in loop_start + loopable_region_length..20 {
+            out.push(looper.tick((i + 10) as f32));
+        }
+        // expect the contents of static buffer to be  the first 4 samples
+        let expected_static = vec![13.0, 12.0, 11.0, 10.0];
+        let static_buffer = looper.static_buffer();
+        for i in 0..4 {
+            assert_eq!(static_buffer.read(i), expected_static[i]);
         }
         assert_eq!(
             out,
-            vec![0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0]
+            vec![
+                10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0,
+                12.0, 13.0, 10.0, 11.0, 12.0, 13.0
+            ]
         );
     }
 }

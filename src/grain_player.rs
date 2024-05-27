@@ -71,7 +71,7 @@ impl GrainPlayer {
             .count()
     }
 
-    fn num_playing_grains(&self) -> usize {
+    pub fn num_playing_grains(&self) -> usize {
         self.grains
             .iter()
             .filter(|grain| grain.is_playing())
