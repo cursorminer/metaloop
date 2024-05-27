@@ -73,8 +73,8 @@ impl GrainLooper {
     pub fn set_loop_duration(&mut self, duration_seconds: f32) {
         self.loop_duration = (duration_seconds * self.sample_rate) as usize;
 
-        // the loop duration should not be longer than the loopable region
-        assert!(self.loop_duration < self.loopable_region_length);
+        // the loop duration and fade should not be longer than the loopable region
+        assert!(self.loop_duration + self.fade_duration <= self.loopable_region_length);
     }
 
     pub fn start_looping(&mut self, loop_start_time_seconds: f32) {
@@ -160,6 +160,10 @@ impl GrainLooper {
         } else {
             self.ticks_till_next_loop -= 1;
         }
+    }
+
+    fn is_using_static_buffer(&self) -> bool {
+        self.use_static_buffer
     }
 }
 
@@ -318,6 +322,42 @@ mod tests {
             &out,
             &vec![fifth_fade, sixth_fade, 17.0, 18.0, 19.0],
             0.0001,
+        );
+    }
+
+    #[test]
+    fn test_grain_looper_switch_to_static() {
+        // the loopable region is only 4 samples long
+        let mut looper = GrainLooper::new_with_length(8.0, 8);
+        let mut out = vec![];
+
+        let loop_start = 4;
+        let loopable_region_length = 4;
+
+        // fill the rolling buffer with 4 samples
+        for i in 0..4 {
+            out.push(looper.tick(i as f32));
+        }
+        // start looping those 4 samples
+        looper.set_fade_time(0.0);
+        looper.set_loop_offset(0.5);
+        looper.set_loop_duration(0.5);
+        looper.start_looping(0.0);
+
+        assert!(!looper.is_using_static_buffer());
+        // check that the loop keeps going after the rolling buffer is full
+        for i in 4..8 {
+            out.push(looper.tick(i as f32));
+        }
+        assert!(looper.is_using_static_buffer());
+
+        // check the output loops as normal
+        for i in 8..16 {
+            out.push(looper.tick(i as f32));
+        }
+        assert_eq!(
+            out,
+            vec![0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0]
         );
     }
 }
