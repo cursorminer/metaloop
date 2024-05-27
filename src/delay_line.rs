@@ -1,12 +1,17 @@
 // delay line
+use std::ops::{Add, Mul, Sub};
 
 pub struct DelayLine {
     buffer: Vec<f32>,
     write_index: usize,
 }
 
-pub fn lerp(a: f32, b: f32, f: f32) -> f32 {
-    f * b + (1.0 - f) * a
+pub fn lerp<T, X>(a: T, b: T, f: X) -> T
+where
+    T: Mul<X, Output = T> + Add<T, Output = T> + Sub<T, Output = T> + Copy,
+    X: Copy + Mul<T, Output = T>,
+{
+    f * (b - a) + a
 }
 
 pub fn fill_delay_ramp(delay_line: &mut DelayLine) {
