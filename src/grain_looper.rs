@@ -5,6 +5,7 @@ use crate::ramped_value::RampedValue;
 // how much of the buffer we allow to scrub through
 const LOOPABLE_REGION_LENGTH: usize = 100000;
 const DELAY_LINE_LENGTH: usize = 2 * LOOPABLE_REGION_LENGTH;
+const MAX_FADE_TIME: f32 = 0.1;
 
 // uses a grain player to create loops
 // owns two delay lines, one continously being
@@ -387,11 +388,11 @@ mod tests {
     #[test]
     fn test_grain_looper_switch_to_static_fade() {
         // like above but with a tricky thing that the fade needs to be appended to the static buffer
-        let mut looper = GrainLooper::new_with_length(8.0, 8);
+        let mut looper = GrainLooper::new_with_length(8.0, 16);
         let mut out = vec![];
 
         let loop_start = 4;
-        let loopable_region_length = 4;
+        let loopable_region_length = 8;
 
         // fill the rolling buffer with 4 samples
         for i in 0..loop_start {
@@ -421,11 +422,15 @@ mod tests {
         for i in 0..4 {
             assert_eq!(static_buffer.read(i), expected_static[i]);
         }
+        #[rustfmt::skip]
         assert_eq!(
             out,
             vec![
-                10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0,
-                12.0, 13.0, 10.0, 11.0, 12.0, 13.0
+                10.0, 11.0, 12.0, 13.0, 9.333334, 5.0000005, 
+                10.0, 11.0, 8.0, 4.333334, 
+                10.0, 11.0, 8.0, 4.333334, 
+                10.0, 11.0, 8.0, 4.333334, 
+                10.0, 11.0
             ]
         );
     }
