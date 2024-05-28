@@ -3,9 +3,9 @@ use crate::grain_player::GrainPlayer;
 use crate::ramped_value::RampedValue;
 
 // how much of the buffer we allow to scrub through
+// TODO set these to be seconds
 const LOOPABLE_REGION_LENGTH: usize = 100000;
-const DELAY_LINE_LENGTH: usize = 2 * LOOPABLE_REGION_LENGTH;
-const MAX_FADE_TIME: f32 = 0.1;
+const MAX_FADE_TIME: usize = 1000;
 
 // uses a grain player to create loops
 // owns two delay lines, one continously being
@@ -30,18 +30,25 @@ struct GrainLooper {
     loop_offset: usize,
     loop_duration: usize,
     fade_duration: usize,
+    fade_allowance: usize,
     dry_ramp: RampedValue,
 }
 
 #[allow(dead_code)]
 impl GrainLooper {
     pub fn new(sample_rate: f32) -> GrainLooper {
-        GrainLooper::new_with_length(sample_rate, DELAY_LINE_LENGTH)
+        GrainLooper::new_with_length(sample_rate, LOOPABLE_REGION_LENGTH, MAX_FADE_TIME)
     }
 
-    fn new_with_length(sample_rate: f32, delay_line_length: usize) -> GrainLooper {
-        let delay_line_rolling = DelayLine::new(delay_line_length);
-        let delay_line_static = DelayLine::new(delay_line_length / 2);
+    fn new_with_length(
+        sample_rate: f32,
+        loopable_region_length: usize,
+        max_fade_time: usize,
+    ) -> GrainLooper {
+        let delay_line_length_rolling = loopable_region_length * 2 + max_fade_time;
+        let delay_line_length_static = loopable_region_length + max_fade_time;
+        let delay_line_rolling = DelayLine::new(delay_line_length_rolling);
+        let delay_line_static = DelayLine::new(delay_line_length_static);
         GrainLooper {
             grain_player: GrainPlayer::new(),
             is_looping: false,
@@ -51,16 +58,18 @@ impl GrainLooper {
             static_buffer: delay_line_static,
             rolling_offset: 0,
             use_static_buffer: false,
-            loopable_region_length: delay_line_length / 2,
+            loopable_region_length: loopable_region_length,
             loop_offset: 0,
             loop_duration: 0,
             fade_duration: 0,
+            fade_allowance: max_fade_time,
             dry_ramp: RampedValue::new(1.0),
         }
     }
 
     pub fn set_fade_time(&mut self, fade: f32) {
         let fade_samples = (fade * self.sample_rate) as usize;
+        assert!(fade_samples <= self.fade_allowance);
         self.grain_player.set_fade_time(fade_samples);
         self.fade_duration = fade_samples;
     }
@@ -78,9 +87,10 @@ impl GrainLooper {
         assert!(self.loop_duration + self.fade_duration <= self.loopable_region_length);
     }
 
+    // note that the loop start time should be offset by the fade duration in order to sync the maximum of the fade
+    // with the transient at the start of the loop
     pub fn start_looping(&mut self, loop_start_time_seconds: f32) {
         self.is_looping = true;
-        // swap the buffers
 
         // schedule the first grain
         let wait = (loop_start_time_seconds * self.sample_rate) as usize;
@@ -119,7 +129,9 @@ impl GrainLooper {
         self.tick_next_loop_trigger();
 
         if self.use_static_buffer {
-            looped = self.grain_player.tick(&self.static_buffer, 0);
+            looped = self
+                .grain_player
+                .tick(&self.static_buffer, self.fade_allowance);
         } else {
             looped = self
                 .grain_player
@@ -143,14 +155,14 @@ impl GrainLooper {
         self.static_buffer
             .tick(self.rolling_buffer.read(self.loopable_region_length));
 
-        // when the rolling offset has reached the end of the loopable region
+        // when the rolling offset has reached the end of the loopable region, and the fade allowance
         // we switch to the static buffer
-        if self.rolling_offset >= self.loopable_region_length {
+        if self.rolling_offset >= self.ticks_before_switch_to_static_buffer() {
             self.use_static_buffer = true;
-            self.rolling_offset = 0;
         }
     }
 
+    // ticks down the counter that will trigger a new loop as the old one starts to fade out
     fn tick_next_loop_trigger(&mut self) {
         if self.ticks_till_next_loop == 0 {
             self.grain_player.schedule_grain(
@@ -161,6 +173,10 @@ impl GrainLooper {
             self.ticks_till_next_loop = self.loop_duration;
         }
         self.ticks_till_next_loop -= 1;
+    }
+
+    fn ticks_before_switch_to_static_buffer(&self) -> usize {
+        self.loopable_region_length + self.fade_allowance
     }
 
     fn is_using_static_buffer(&self) -> bool {
@@ -191,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_grain_looper_dry() {
-        let mut looper = GrainLooper::new_with_length(10.0, 20);
+        let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
         let mut out = vec![];
         for i in 0..5 {
             out.push(looper.tick(i as f32));
@@ -202,7 +218,7 @@ mod tests {
     #[test]
     fn test_grain_looper_loop() {
         // test a 5 sample loop, no fading, not using static buffer yet
-        let mut looper = GrainLooper::new_with_length(10.0, 20);
+        let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
         let mut out = vec![];
         for i in 0..5 {
             out.push(looper.tick((i + 10) as f32));
@@ -238,7 +254,7 @@ mod tests {
     #[test]
     fn test_grain_looper_fade_is_flat() {
         // when we loop a DC signal we expect the fades to maintain the DC level
-        let mut looper = GrainLooper::new_with_length(10.0, 50);
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
         let mut out = vec![];
         for _i in 0..8 {
             out.push(looper.tick(1.0));
@@ -272,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_grain_looper_fade() {
-        let mut looper = GrainLooper::new_with_length(10.0, 50);
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
         let mut out = vec![];
 
         let loop_start = 6;
@@ -292,36 +308,33 @@ mod tests {
         for i in loop_start..loop_stop {
             out.push(looper.tick(i as f32));
         }
-        // first loop is same as dry
-        // but the next will fade between 0,1,2,3,4,5,6,7,8       4,5,6,7,8,9
-        //                                   |       |       |       |
-        // and                                        0,1,2,3,4,5,
+
         let first_faded = 6.0 * 2.0 / 3.0;
         let second_faded = 7.0 / 3.0 + 2.0 / 3.0;
-        let third_faded = 4.0 * 2.0 / 3.0;
-        let fourth_faded = 5.0 / 3.0 + 2.0 / 3.0;
-        all_near(
-            &out,
-            &vec![
-                0.0,
-                1.0,
-                2.0,
-                3.0,
-                4.0,
-                5.0,
-                first_faded,
-                second_faded,
-                2.0,
-                3.0,
-                third_faded,
-                fourth_faded,
-                2.0,
-                3.0,
-                third_faded,
-                fourth_faded,
-            ],
-            0.0001,
-        );
+
+        let third = 0.33333334;
+        let two_thirds = 0.6666667;
+        let loop_grain_contents = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+        let fades = vec![third, two_thirds, 1.0, 1.0, two_thirds, third];
+        let faded = loop_grain_contents
+            .iter()
+            .zip(fades.iter())
+            .map(|(a, b)| a * b)
+            .collect::<Vec<f32>>();
+        let mut loop_overlapped = vec![];
+        for i in 0..4 {
+            let overlapped = faded.get(i + 4).unwrap_or(&0.0);
+            loop_overlapped.push(faded[i] + overlapped);
+        }
+        loop_overlapped.rotate_left(2);
+
+        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, first_faded, second_faded];
+
+        expected.extend(&loop_overlapped);
+        expected.extend(&loop_overlapped);
+        expected.extend(&loop_overlapped);
+
+        all_near(&out, &expected, 0.0001);
 
         out.clear();
         looper.stop_looping();
@@ -342,11 +355,11 @@ mod tests {
     #[test]
     fn test_grain_looper_switch_to_static() {
         // the loopable region is only 4 samples long
-        let mut looper = GrainLooper::new_with_length(8.0, 8);
+        let mut looper = GrainLooper::new_with_length(8.0, 4, 0);
         let mut out = vec![];
 
         let loop_start = 4;
-        let loopable_region_length = 4;
+        let ticks_before_switch_to_static_buffer = looper.ticks_before_switch_to_static_buffer();
 
         // fill the rolling buffer with 4 samples
         for i in 0..loop_start {
@@ -361,13 +374,14 @@ mod tests {
         assert!(!looper.is_using_static_buffer());
 
         // now the static buffer starts filling
-        for i in loop_start..loop_start + loopable_region_length {
+        for i in loop_start..loop_start + ticks_before_switch_to_static_buffer {
             out.push(looper.tick((i + 10) as f32));
         }
+        // after the loopable region has passed, we should be using the static buffer
         assert!(looper.is_using_static_buffer());
 
         // check the output loops as normal
-        for i in loop_start + loopable_region_length..20 {
+        for i in loop_start + ticks_before_switch_to_static_buffer..20 {
             out.push(looper.tick((i + 10) as f32));
         }
         // expect the contents of static buffer to be  the first 4 samples
@@ -388,50 +402,53 @@ mod tests {
     #[test]
     fn test_grain_looper_switch_to_static_fade() {
         // like above but with a tricky thing that the fade needs to be appended to the static buffer
-        let mut looper = GrainLooper::new_with_length(8.0, 16);
+        let mut looper = GrainLooper::new_with_length(8.0, 8, 2);
         let mut out = vec![];
 
-        let loop_start = 4;
-        let loopable_region_length = 8;
+        let loop_start = 6;
+        let ticks_before_switch_to_static_buffer = looper.ticks_before_switch_to_static_buffer();
 
         // fill the rolling buffer with 4 samples
         for i in 0..loop_start {
             out.push(looper.tick((i + 10) as f32));
         }
-        // start looping those 4 samples
+        // set fade to two samples
         looper.set_fade_time(0.25);
         looper.set_loop_offset(0.5);
         looper.set_loop_duration(0.5);
         looper.start_looping(0.0);
 
-        assert!(!looper.is_using_static_buffer());
-
-        // now the static buffer starts filling
-        for i in loop_start..loop_start + loopable_region_length {
+        for i in loop_start..loop_start + ticks_before_switch_to_static_buffer {
+            assert!(!looper.is_using_static_buffer());
             out.push(looper.tick((i + 10) as f32));
         }
+        // after looping for the entire loopable region, the static buffer should be full
         assert!(looper.is_using_static_buffer());
 
-        // check the output loops as normal
-        for i in loop_start + loopable_region_length..20 {
+        for i in ticks_before_switch_to_static_buffer
+            ..loop_start + ticks_before_switch_to_static_buffer * 2
+        {
             out.push(looper.tick((i + 10) as f32));
         }
-        // expect the contents of static buffer to be  the first 4 samples
-        let expected_static = vec![13.0, 12.0, 11.0, 10.0];
+        // expect the contents of static buffer to be the loop, plus 2 samples to fade
+        let expected_static = vec![17.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 0.0, 0.0];
         let static_buffer = looper.static_buffer();
-        for i in 0..4 {
+        for i in 0..looper.static_buffer().len() {
             assert_eq!(static_buffer.read(i), expected_static[i]);
         }
-        #[rustfmt::skip]
-        assert_eq!(
-            out,
-            vec![
-                10.0, 11.0, 12.0, 13.0, 9.333334, 5.0000005, 
-                10.0, 11.0, 8.0, 4.333334, 
-                10.0, 11.0, 8.0, 4.333334, 
-                10.0, 11.0, 8.0, 4.333334, 
-                10.0, 11.0
-            ]
-        );
+
+        let mut expected = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 14.0, 13.0];
+        let fade_1 = 14.0 * 2.0 / 3.0 + 10.0 / 3.0;
+        let fade_2 = 15.0 / 3.0 + 11.0 * 2.0 / 3.0;
+        let loop_overlapped = vec![12.0, 13.0, fade_1, fade_2];
+
+        expected.extend(&loop_overlapped);
+        expected.extend(&loop_overlapped);
+        expected.extend(&loop_overlapped);
+        expected.extend(&loop_overlapped);
+        expected.extend(&loop_overlapped);
+        expected.extend(&loop_overlapped);
+
+        all_near(&out, &expected, 0.0001);
     }
 }
