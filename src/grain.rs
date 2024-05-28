@@ -8,8 +8,9 @@ pub struct Grain {
     end_delay: usize,
     duration: usize,
     fade_duration: usize,
-    play_head_pos: usize,
+    elapsed_sample_count: usize,
     offset: usize,
+    sample_increment: isize,
     fade_ramp: RampedValue,
 }
 
@@ -18,7 +19,13 @@ impl Grain {
     // offset: the initial delay time where the grain starts
     // duration: how long the grain lasts
     // fade: number of samples to fade in and out (this is within the duration above)
-    pub fn new(scheduled_wait: usize, offset: usize, duration: usize, fade: usize) -> Grain {
+    pub fn new(
+        scheduled_wait: usize,
+        offset: usize,
+        duration: usize,
+        fade: usize,
+        reverse: bool,
+    ) -> Grain {
         assert!(offset >= duration);
 
         let actual_fade = if (fade * 2) > duration {
@@ -27,14 +34,29 @@ impl Grain {
             fade
         };
 
+        let start_delay = if reverse {
+            offset - duration - 1
+        } else {
+            offset
+        };
+
+        let end_delay = if reverse {
+            offset - 1
+        } else {
+            offset - duration
+        };
+
+        let sample_increment = if reverse { -1 } else { 1 };
+
         Grain {
             scheduled_wait: scheduled_wait,
-            delay_pos: offset,
-            end_delay: offset - duration,
+            delay_pos: start_delay,
+            end_delay: end_delay,
             duration: duration,
             fade_duration: actual_fade,
-            play_head_pos: 0,
+            elapsed_sample_count: 0,
             offset: offset,
+            sample_increment: sample_increment,
             fade_ramp: RampedValue::new(1.0),
         }
     }
@@ -49,16 +71,18 @@ impl Grain {
             return (0, 0.0);
         }
 
-        if self.play_head_pos == 0 && self.scheduled_wait == 0 {
+        if self.elapsed_sample_count == 0 && self.scheduled_wait == 0 {
             self.fade_ramp.set(0.0);
             self.fade_ramp.ramp(1.0, self.fade_duration);
-        } else if self.play_head_pos == (self.duration - self.fade_duration) {
+        } else if self.elapsed_sample_count == (self.duration - self.fade_duration) {
             self.fade_ramp.set(1.0);
             self.fade_ramp.ramp(0.0, self.fade_duration);
         }
+        let del = (self.delay_pos as isize) - self.sample_increment;
+        assert!(del >= 0);
 
-        self.delay_pos = self.delay_pos - 1;
-        self.play_head_pos = self.play_head_pos + 1;
+        self.delay_pos = del as usize;
+        self.elapsed_sample_count = self.elapsed_sample_count + 1;
 
         let win = self.fade_ramp.tick();
         (self.delay_pos, win)
@@ -66,12 +90,12 @@ impl Grain {
 
     pub fn stop(&mut self) {
         // if already fading out don't stop it
-        if self.play_head_pos > (self.duration - self.fade_duration) {
+        if self.elapsed_sample_count > (self.duration - self.fade_duration) {
             return;
         }
 
         // otherwise tweak the values so that the grain fades now
-        self.duration = self.play_head_pos + self.fade_duration;
+        self.duration = self.elapsed_sample_count + self.fade_duration;
         self.end_delay = self.delay_pos - self.fade_duration;
     }
 
@@ -88,13 +112,13 @@ impl Grain {
     }
 
     pub fn is_fading_in(&self) -> bool {
-        return self.play_head_pos < self.fade_duration;
+        return self.elapsed_sample_count < self.fade_duration;
     }
     pub fn is_fading_out(&self) -> bool {
-        return self.play_head_pos > (self.duration - self.fade_duration);
+        return self.elapsed_sample_count > (self.duration - self.fade_duration);
     }
-    pub fn play_head_pos(&self) -> usize {
-        return self.play_head_pos;
+    pub fn elapsed_sample_count(&self) -> usize {
+        return self.elapsed_sample_count;
     }
     pub fn offset(&self) -> usize {
         return self.offset;
@@ -110,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_grain() {
-        let mut grain = Grain::new(0, 10, 5, 0);
+        let mut grain = Grain::new(0, 10, 5, 0, false);
 
         let expected = vec![(9, 1.0), (8, 1.0), (7, 1.0), (6, 1.0), (5, 1.0), (0, 0.0)];
         let mut out = vec![];
@@ -125,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_grain_wait() {
-        let mut grain = Grain::new(1, 10, 5, 0);
+        let mut grain = Grain::new(1, 10, 5, 0, false);
 
         let expected = vec![
             (0, 0.0),
@@ -148,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_grain_fade() {
-        let mut grain = Grain::new(0, 10, 9, 3);
+        let mut grain = Grain::new(0, 10, 9, 3, false);
 
         let expected = vec![
             (9, 0.25),
@@ -172,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_grain_stop() {
-        let mut grain = Grain::new(0, 20, 15, 3);
+        let mut grain = Grain::new(0, 20, 15, 3, false);
 
         let expected = vec![(19, 0.25), (18, 0.5), (17, 0.75), (16, 1.0), (15, 1.0)];
         let mut out = vec![];
@@ -193,5 +217,44 @@ mod tests {
 
         assert_eq!(out, expected_fade);
         assert_eq!(grain.is_finished(), true);
+    }
+
+    #[test]
+    fn test_grain_reverse() {
+        let mut grain = Grain::new(0, 10, 5, 0, true);
+
+        let expected = vec![(5, 1.0), (6, 1.0), (7, 1.0), (8, 1.0), (9, 1.0), (0, 0.0)];
+        let mut out = vec![];
+        for _i in 0..expected.len() {
+            // assert!(!grain.is_finished());
+            out.push(grain.tick());
+        }
+
+        assert_eq!(out, expected);
+        assert!(grain.is_finished());
+    }
+
+    #[test]
+    fn test_grain_fade_reverse() {
+        let mut grain = Grain::new(0, 10, 9, 3, true);
+
+        let expected = vec![
+            (1, 0.25),
+            (2, 0.5),
+            (3, 0.75),
+            (4, 1.0),
+            (5, 1.0),
+            (6, 1.0),
+            (7, 0.75),
+            (8, 0.5),
+            (9, 0.25),
+            (0, 0.0),
+        ];
+        let mut out = vec![];
+        for _i in 0..expected.len() {
+            out.push(grain.tick());
+        }
+
+        assert_eq!(out, expected);
     }
 }

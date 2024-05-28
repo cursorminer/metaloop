@@ -7,6 +7,7 @@ pub const MAX_GRAINS: usize = 10;
 pub struct GrainPlayer {
     grains: Vec<Grain>,
     fade_duration: usize,
+    reverse: bool,
 }
 
 // schedule and play grains
@@ -15,21 +16,25 @@ impl GrainPlayer {
     pub fn new() -> GrainPlayer {
         let mut grains_init = vec![];
         for _ in 0..MAX_GRAINS {
-            grains_init.push(Grain::new(0, 0, 0, 0));
+            grains_init.push(Grain::new(0, 0, 0, 0, false));
         }
 
         GrainPlayer {
             grains: grains_init,
             fade_duration: 0,
+            reverse: false,
         }
     }
 
     pub fn set_fade_time(&mut self, fade: usize) {
         self.fade_duration = fade;
     }
+    pub fn set_reverse(&mut self, reverse: bool) {
+        self.reverse = reverse;
+    }
 
     pub fn schedule_grain(&mut self, wait: usize, offset: usize, duration: usize) {
-        let grain = Grain::new(wait, offset, duration, self.fade_duration);
+        let grain = Grain::new(wait, offset, duration, self.fade_duration, self.reverse);
 
         // replace a finished grain
         for i in 0..self.grains.len() {
@@ -101,7 +106,7 @@ impl GrainPlayer {
         self.grains
             .iter()
             .filter(|grain| grain.is_playing())
-            .min_by_key(|grain| grain.play_head_pos())
+            .min_by_key(|grain| grain.elapsed_sample_count())
     }
 }
 

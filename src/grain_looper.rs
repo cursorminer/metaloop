@@ -119,6 +119,10 @@ impl GrainLooper {
         self.dry_ramp.ramp(1.0, self.fade_duration);
     }
 
+    pub fn set_reverse(&mut self, reverse: bool) {
+        self.grain_player.set_reverse(reverse);
+    }
+
     pub fn tick(&mut self, input: f32) -> f32 {
         self.rolling_buffer.tick(input);
         self.rolling_offset += 1;
@@ -479,6 +483,7 @@ mod tests {
         looper.set_loop_offset(0.6);
         // change the length of the loop to be 3 samples (2,3,4)
         looper.set_loop_duration(0.3);
+        looper.set_reverse(true);
 
         for i in change_offset_at..stop_at {
             out.push(looper.tick(i as f32));
@@ -487,7 +492,7 @@ mod tests {
         let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
 
         let first_loop = vec![4.0, 5.0, 6.0, 7.0];
-        let second_loop = vec![2.0, 3.0, 4.0];
+        let second_loop = vec![4.0, 3.0, 2.0];
 
         expected.extend(&first_loop);
         expected.extend(&first_loop);
