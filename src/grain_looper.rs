@@ -451,4 +451,50 @@ mod tests {
 
         all_near(&out, &expected, 0.0001);
     }
+
+    #[test]
+    fn test_grain_looper_tweak_loop() {
+        // test that we can change the offset and length of the loop
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 0);
+        let mut out = vec![];
+
+        let loop_start_at = 8;
+        let change_offset_at = 14;
+        let stop_at = 25;
+
+        for i in 0..loop_start_at {
+            out.push(looper.tick(i as f32));
+        }
+
+        looper.set_fade_time(0.0);
+        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
+        looper.set_loop_offset(0.4);
+        looper.set_loop_duration(0.4);
+        looper.start_looping(0.0);
+
+        for i in loop_start_at..change_offset_at {
+            out.push(looper.tick(i as f32));
+        }
+        // offset the loop backwards by 2 samples (2,3,4,5)
+        looper.set_loop_offset(0.6);
+        // change the length of the loop to be 3 samples (2,3,4)
+        looper.set_loop_duration(0.3);
+
+        for i in change_offset_at..stop_at {
+            out.push(looper.tick(i as f32));
+        }
+
+        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+
+        let first_loop = vec![4.0, 5.0, 6.0, 7.0];
+        let second_loop = vec![2.0, 3.0, 4.0];
+
+        expected.extend(&first_loop);
+        expected.extend(&first_loop);
+        expected.extend(&second_loop);
+        expected.extend(&second_loop);
+        expected.extend(&second_loop);
+
+        assert_eq!(out, expected);
+    }
 }
