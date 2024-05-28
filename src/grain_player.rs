@@ -1,5 +1,6 @@
 use crate::delay_line::DelayLine;
 use crate::grain::Grain;
+use std::ops::{Add, AddAssign, Mul, Sub};
 
 pub const MAX_GRAINS: usize = 10;
 
@@ -39,8 +40,20 @@ impl GrainPlayer {
         }
     }
 
-    pub fn tick(&mut self, delay_line: &DelayLine<f32>, rolling_offset: usize) -> f32 {
-        let mut out = 0.0;
+    pub fn tick<
+        T: Copy
+            + Default
+            + Add<T, Output = T>
+            + Sub<T, Output = T>
+            + Mul<T, Output = T>
+            + Mul<f32, Output = T>
+            + AddAssign,
+    >(
+        &mut self,
+        delay_line: &DelayLine<T>,
+        rolling_offset: usize,
+    ) -> T {
+        let mut out = Default::default();
 
         // accumulate output of all grains
         for grain in self.grains.iter_mut() {
@@ -100,7 +113,7 @@ mod tests {
     #[test]
     fn test_grain_player_state() {
         let mut player = GrainPlayer::new();
-        let delay_line = DelayLine::new(100);
+        let delay_line: DelayLine<f32> = DelayLine::new(100);
 
         player.schedule_grain(2, 10, 4);
 
@@ -129,7 +142,7 @@ mod tests {
     #[test]
     fn test_grain_player_stop_all() {
         let mut player = GrainPlayer::new();
-        let delay_line = DelayLine::new(100);
+        let delay_line: DelayLine<f32> = DelayLine::new(100);
         player.set_fade_time(2);
 
         player.schedule_grain(0, 10, 4);
@@ -158,7 +171,7 @@ mod tests {
     #[test]
     fn test_grain_player_output() {
         let mut player = GrainPlayer::new();
-        let mut delay_line = DelayLine::new(20);
+        let mut delay_line: DelayLine<f32> = DelayLine::new(20);
         fill_delay_ramp(&mut delay_line);
         let mut out = vec![];
 
