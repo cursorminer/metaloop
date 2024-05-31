@@ -512,4 +512,53 @@ mod tests {
 
         assert_eq!(out, expected);
     }
+
+    fn test_grain_looper_immediate_reverse_without_fade() {
+        // test that an immediate reverse with a fade does not try to read into the future
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 0);
+        let mut out = vec![];
+
+        let loop_start_at = 8;
+        let stop_at = 14;
+
+        for i in 0..loop_start_at {
+            out.push(looper.tick(i as f32));
+        }
+
+        looper.set_fade_time(0.0);
+        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
+        looper.set_loop_offset(0.4);
+        looper.set_loop_duration(0.4);
+        looper.set_reverse(true);
+        looper.start_looping(0.0);
+
+        for i in loop_start_at..stop_at {
+            out.push(looper.tick(i as f32));
+        }
+    }
+
+    #[test]
+    fn test_grain_looper_immediate_reverse_with_fade() {
+        // test that an immediate reverse with a fade does not try to read into the future
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
+        let mut out = vec![];
+
+        let loop_start_at = 8;
+        let stop_at = 14;
+
+        for i in 0..loop_start_at {
+            out.push(looper.tick(i as f32));
+        }
+
+        looper.set_fade_time(0.2);
+        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
+        looper.set_loop_offset(0.4);
+        looper.set_loop_duration(0.4);
+        looper.set_reverse(true);
+        looper.start_looping(0.0);
+
+        for i in loop_start_at..stop_at {
+            out.push(looper.tick(i as f32));
+        }
+    }
 }
