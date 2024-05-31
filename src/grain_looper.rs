@@ -12,7 +12,7 @@ const MAX_FADE_TIME: usize = 1000;
 // written to by the input, one that is outputting loop
 // when a new loop is started, the output delay line is
 // copied to the input delay line
-struct GrainLooper {
+pub struct GrainLooper {
     grain_player: GrainPlayer,
     is_looping: bool,
     sample_rate: f32,
@@ -34,6 +34,8 @@ struct GrainLooper {
     dry_ramp: RampedValue,
 }
 
+// Loops segments of audio, with the ability to scrub through the loop
+// sets loop offset and duration in seconds
 #[allow(dead_code)]
 impl GrainLooper {
     pub fn new(sample_rate: f32) -> GrainLooper {
@@ -65,6 +67,10 @@ impl GrainLooper {
             fade_allowance: max_fade_time,
             dry_ramp: RampedValue::new(1.0),
         }
+    }
+
+    pub fn set_sample_rate(&mut self, sample_rate: f32) {
+        self.sample_rate = sample_rate;
     }
 
     pub fn set_fade_time(&mut self, fade: f32) {
@@ -193,6 +199,10 @@ impl GrainLooper {
 
     fn num_playing_grains(&self) -> usize {
         self.grain_player.num_playing_grains()
+    }
+
+    pub fn is_looping(&self) -> bool {
+        self.is_looping
     }
 }
 
