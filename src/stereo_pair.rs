@@ -13,6 +13,18 @@ pub trait AudioSampleOps:
 {
 }
 
+impl<
+        T: Copy
+            + Default
+            + Add<Self, Output = Self>
+            + Sub<Self, Output = Self>
+            + Mul<Self, Output = Self>
+            + Mul<f32, Output = Self>
+            + AddAssign<Self>,
+    > AudioSampleOps for T
+{
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct StereoPair<T: Float> {
     left: T,
@@ -74,6 +86,13 @@ impl<T: Float> Mul<T> for StereoPair<T> {
             left: self.left * scalar,
             right: self.right * scalar,
         }
+    }
+}
+
+impl<T: Float + std::ops::AddAssign> AddAssign for StereoPair<T> {
+    fn add_assign(&mut self, other: StereoPair<T>) {
+        self.left += other.left;
+        self.right += other.right;
     }
 }
 

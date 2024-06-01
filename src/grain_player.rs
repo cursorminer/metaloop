@@ -1,6 +1,5 @@
-use crate::delay_line::DelayLine;
 use crate::grain::Grain;
-use std::ops::{Add, AddAssign, Mul, Sub};
+use crate::{delay_line::DelayLine, stereo_pair::AudioSampleOps};
 
 pub const MAX_GRAINS: usize = 10;
 
@@ -52,15 +51,7 @@ impl GrainPlayer {
         }
     }
 
-    pub fn tick<
-        T: Copy
-            + Default
-            + Add<T, Output = T>
-            + Sub<T, Output = T>
-            + Mul<T, Output = T>
-            + Mul<f32, Output = T>
-            + AddAssign,
-    >(
+    pub fn tick<T: AudioSampleOps>(
         &mut self,
         delay_line: &DelayLine<T>,
         rolling_offset: usize,
@@ -77,10 +68,14 @@ impl GrainPlayer {
                 continue;
             }
             let (delay_pos, amplitude) = grain.tick();
-            out += delay_line.read(delay_pos as usize + rolling_offset) * amplitude;
+
+            out = out + delay_line.read_interpolated(delay_pos + rolling_offset as f32) * amplitude;
         }
         out
     }
+
+    // todo: alternative tick that can loop over a delay line of
+    // things that can't be interpolated or whatnot  might need different impl
 
     pub fn stop_all_grains(&mut self) {
         for grain in self.grains.iter_mut() {

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 // delay line
-use std::ops::{Add, Mul, Sub};
+
+use crate::stereo_pair::AudioSampleOps;
 
 pub struct DelayLine<T>
 where
@@ -11,12 +12,11 @@ where
     write_index: usize,
 }
 
-pub fn lerp<T, X>(a: T, b: T, f: X) -> T
+pub fn lerp<T>(a: T, b: T, f: f32) -> T
 where
-    T: Mul<X, Output = T> + Add<T, Output = T> + Sub<T, Output = T> + Copy,
-    X: Copy + Mul<T, Output = T>,
+    T: AudioSampleOps,
 {
-    f * (b - a) + a
+    (b - a) * f + a
 }
 
 pub fn fill_delay_ramp(delay_line: &mut DelayLine<f32>) {
@@ -77,10 +77,11 @@ where
 }
 
 #[allow(dead_code)]
-impl DelayLine<f32> {
-    // todo: implement linear interpolation for more generic types than f32
-    // somehow would involve floor etc for other types
-    pub fn read_interpolated(&self, delay_samples: f32) -> f32 {
+impl<T> DelayLine<T>
+where
+    T: AudioSampleOps,
+{
+    pub fn read_interpolated(&self, delay_samples: f32) -> T {
         let i0 = delay_samples.floor() as usize;
         let i1 = delay_samples.ceil() as usize;
         assert!(i1 < self.buffer.len());
@@ -141,5 +142,10 @@ mod tests {
 
         assert_eq!(stereo_delay_line.read(0), StereoPair::new(5.0, 6.0));
         assert_eq!(stereo_delay_line.read(2), StereoPair::new(1.0, 2.0));
+
+        assert_eq!(
+            stereo_delay_line.read_interpolated(1.5),
+            StereoPair::new(2.0, 3.0)
+        );
     }
 }
