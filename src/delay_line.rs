@@ -2,16 +2,6 @@
 // delay line
 use std::ops::{Add, Mul, Sub};
 
-pub trait DelayLineOps:
-    Copy
-    + Default
-    + Add<Self, Output = Self>
-    + Sub<Self, Output = Self>
-    + Mul<Self, Output = Self>
-    + Mul<f32, Output = Self>
-{
-}
-
 pub struct DelayLine<T>
 where
     T: Copy,
@@ -105,6 +95,7 @@ impl DelayLine<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stereo_pair::StereoPair;
 
     #[test]
     fn test_lerp() {
@@ -131,15 +122,24 @@ mod tests {
 
     #[test]
     fn test_delay_line_type() {
-        let mut delay_line = DelayLine::new(4);
-        delay_line.reset();
-        delay_line.tick(true);
-        delay_line.tick(false);
-        delay_line.tick(true);
-        delay_line.tick(false);
-        assert_eq!(delay_line.read(0), false);
-        assert_eq!(delay_line.read(1), true);
-        assert_eq!(delay_line.read(2), false);
-        assert_eq!(delay_line.read(3), true);
+        let mut bool_delay_line = DelayLine::new(4);
+        bool_delay_line.reset();
+        bool_delay_line.tick(true);
+        bool_delay_line.tick(false);
+        bool_delay_line.tick(true);
+        bool_delay_line.tick(false);
+        assert_eq!(bool_delay_line.read(0), false);
+        assert_eq!(bool_delay_line.read(1), true);
+        assert_eq!(bool_delay_line.read(2), false);
+        assert_eq!(bool_delay_line.read(3), true);
+
+        let mut stereo_delay_line = DelayLine::new(4);
+        stereo_delay_line.reset();
+        stereo_delay_line.tick(StereoPair::new(1.0, 2.0));
+        stereo_delay_line.tick(StereoPair::new(3.0, 4.0));
+        stereo_delay_line.tick(StereoPair::new(5.0, 6.0));
+
+        assert_eq!(stereo_delay_line.read(0), StereoPair::new(5.0, 6.0));
+        assert_eq!(stereo_delay_line.read(2), StereoPair::new(1.0, 2.0));
     }
 }
