@@ -3,8 +3,15 @@ name = "metaloop"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# The `lib` artifact is needed for the standalone target
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
+# assume we are in a folder that is underneath a projects dir which is underneath 
+#the one with nih-plug cloned into it
+nih_plug = { path = "../../", features = ["assert_process_allocs", "standalone"] }
+nih_plug_egui = { path = "../../nih_plug_egui" }
+
+atomic_float = "0.1"
 approx = "0.5.1"
 num-traits = "0.2"
