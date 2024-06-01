@@ -30,12 +30,6 @@ impl Grain {
         reverse: bool,
         speed: f32,
     ) -> Grain {
-        let actual_fade = if (fade * 2) > duration {
-            duration / 2
-        } else {
-            fade
-        };
-
         let start_delay = if reverse {
             offset - duration as f32
         } else {
@@ -44,10 +38,28 @@ impl Grain {
 
         let sample_increment = if reverse { -speed } else { speed };
 
+        // check if faster grain needs to be shorter to avoid buffer overflows
+        let actual_duration = if speed > 1.0 {
+            let more_samples = (duration as f32 * speed) as usize;
+            if more_samples > offset as usize {
+                (offset / speed) as usize
+            } else {
+                duration
+            }
+        } else {
+            duration
+        };
+
+        let actual_fade = if (fade * 2) > actual_duration {
+            actual_duration / 2
+        } else {
+            fade
+        };
+
         Grain {
             scheduled_wait: scheduled_wait,
             delay_pos: start_delay,
-            duration: duration,
+            duration: actual_duration,
             fade_duration: actual_fade,
             elapsed_sample_count: 0,
             offset: offset,
@@ -290,6 +302,54 @@ mod tests {
             (8.0, 1.0),
             (7.5, 1.0),
             (7.0, 1.0),
+            (0.0, 0.0),
+        ];
+        let mut out = vec![];
+        for _i in 0..expected.len() {
+            // assert!(!grain.is_finished());
+            out.push(grain.tick());
+        }
+
+        assert_eq!(out, expected);
+        assert!(grain.is_finished());
+    }
+
+    #[test]
+    fn test_grain_double_speed() {
+        // when offset is long enough
+        let mut grain = Grain::new(0, 10.0, 5, 0, false, 2.0);
+
+        // play whole grain
+        let expected = vec![
+            (9.0, 1.0),
+            (7.0, 1.0),
+            (5.0, 1.0),
+            (3.0, 1.0),
+            (1.0, 1.0),
+            (0.0, 0.0),
+        ];
+        let mut out = vec![];
+        for _i in 0..expected.len() {
+            // assert!(!grain.is_finished());
+            out.push(grain.tick());
+        }
+
+        assert_eq!(out, expected);
+        assert!(grain.is_finished());
+    }
+
+    #[test]
+    fn test_grain_double_speed_stops_early() {
+        // when offset is not long enough
+        let mut grain = Grain::new(0, 5.0, 5, 0, false, 2.0);
+
+        // stop grain early
+        let expected = vec![
+            (4.0, 1.0),
+            (2.0, 1.0),
+            (0.0, 0.0),
+            (0.0, 0.0),
+            (0.0, 0.0),
             (0.0, 0.0),
         ];
         let mut out = vec![];
