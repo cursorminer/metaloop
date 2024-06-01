@@ -17,6 +17,7 @@ pub struct GrainLooper {
     is_looping: bool,
     sample_rate: f32,
     ticks_till_next_loop: usize,
+
     // this is the buffer that is always being written to
     rolling_buffer: DelayLine<f32>,
     // this is the buffer that is only written to when looping, and when
@@ -127,6 +128,10 @@ impl GrainLooper {
 
     pub fn set_reverse(&mut self, reverse: bool) {
         self.grain_player.set_reverse(reverse);
+    }
+
+    pub fn set_speed(&mut self, speed: f32) {
+        self.grain_player.set_speed(speed);
     }
 
     pub fn tick(&mut self, input: f32) -> f32 {
@@ -495,6 +500,8 @@ mod tests {
         looper.set_loop_duration(0.3);
         // reverse the loop (4,3,2)
         looper.set_reverse(true);
+        // slow the loop down by half (4, 3.5, 3)
+        looper.set_speed(0.5);
 
         for i in change_offset_at..stop_at {
             out.push(looper.tick(i as f32));
@@ -503,7 +510,7 @@ mod tests {
         let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
 
         let first_loop = vec![4.0, 5.0, 6.0, 7.0];
-        let second_loop = vec![4.0, 3.0, 2.0];
+        let second_loop = vec![4.0, 3.5, 3.0];
 
         expected.extend(&first_loop);
         expected.extend(&first_loop);

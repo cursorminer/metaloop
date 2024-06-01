@@ -7,6 +7,7 @@ pub struct GrainPlayer {
     grains: Vec<Grain>,
     fade_duration: usize,
     reverse: bool,
+    speed: f32,
 }
 
 // schedule and play grains
@@ -22,6 +23,7 @@ impl GrainPlayer {
             grains: grains_init,
             fade_duration: 0,
             reverse: false,
+            speed: 1.0,
         }
     }
 
@@ -31,6 +33,9 @@ impl GrainPlayer {
     pub fn set_reverse(&mut self, reverse: bool) {
         self.reverse = reverse;
     }
+    pub fn set_speed(&mut self, speed: f32) {
+        self.speed = speed;
+    }
 
     pub fn schedule_grain(&mut self, wait: usize, offset: f32, duration: usize) {
         let grain = Grain::new(
@@ -39,7 +44,7 @@ impl GrainPlayer {
             duration,
             self.fade_duration,
             self.reverse,
-            1.0,
+            self.speed,
         );
 
         // replace a finished grain
@@ -68,8 +73,15 @@ impl GrainPlayer {
                 continue;
             }
             let (delay_pos, amplitude) = grain.tick();
+            let delay = delay_pos + rolling_offset as f32;
+            assert!(
+                delay >= 0.0 && delay < delay_line.len() as f32,
+                "delay is outside buffer. delay_pos: {:?}, rolling_offset: {:?}",
+                delay_pos,
+                rolling_offset
+            );
 
-            out = out + delay_line.read_interpolated(delay_pos + rolling_offset as f32) * amplitude;
+            out = out + delay_line.read_interpolated(delay) * amplitude;
         }
         out
     }
