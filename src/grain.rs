@@ -38,7 +38,7 @@ impl Grain {
         };
 
         let start_delay = if reverse {
-            offset - duration as f32
+            offset - duration as f32 - 1.0
         } else {
             offset
         };
@@ -237,32 +237,34 @@ mod tests {
     fn test_grain_reverse() {
         let mut grain = Grain::new(0, 10.0, 5, 0, true);
 
-        let expected = vec![
-            (5.0, 1.0),
-            (6.0, 1.0),
-            (7.0, 1.0),
-            (8.0, 1.0),
-            (9.0, 1.0),
-            (0.0, 0.0),
-        ];
+        let expected = vec![(5.0, 1.0), (6.0, 1.0), (7.0, 1.0), (8.0, 1.0), (9.0, 1.0)];
         let mut out = vec![];
         for _i in 0..expected.len() {
-            // assert!(!grain.is_finished());
             out.push(grain.tick());
         }
 
         assert_eq!(out, expected);
         assert!(grain.is_finished());
+
+        // check that normal grain is reverse of it
+        let mut grain = Grain::new(0, 10.0, 5, 0, false);
+        let mut out_fwd = vec![];
+        for _i in 0..expected.len() {
+            out_fwd.push(grain.tick());
+        }
+        out_fwd.reverse();
+        assert_eq!(out, out_fwd);
     }
 
     #[test]
     fn test_grain_fade_reverse() {
-        let mut grain = Grain::new(0, 10.0, 9, 3, true);
+        let mut grain = Grain::new(0, 10.0, 10, 3, true);
 
         let expected = vec![
-            (1.0, 0.25),
-            (2.0, 0.5),
-            (3.0, 0.75),
+            (0.0, 0.25),
+            (1.0, 0.5),
+            (2.0, 0.75),
+            (3.0, 1.0),
             (4.0, 1.0),
             (5.0, 1.0),
             (6.0, 1.0),

@@ -493,6 +493,7 @@ mod tests {
         looper.set_loop_offset(0.6);
         // change the length of the loop to be 3 samples (2,3,4)
         looper.set_loop_duration(0.3);
+        // reverse the loop (4,3,2)
         looper.set_reverse(true);
 
         for i in change_offset_at..stop_at {
@@ -554,7 +555,7 @@ mod tests {
         let mut out = vec![];
 
         let loop_start_at = 8;
-        let stop_at = 14;
+        let stop_at = 18;
 
         for i in 0..loop_start_at {
             out.push(looper.tick(i as f32));
@@ -570,5 +571,16 @@ mod tests {
         for i in loop_start_at..stop_at {
             out.push(looper.tick(i as f32));
         }
+
+        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let initial_fade = vec![7.666667, 7.0];
+
+        let loop_samples = vec![5.0, 4.0, 4.333333, 4.6666665];
+
+        expected.extend(&initial_fade);
+        expected.extend(&loop_samples);
+        expected.extend(&loop_samples);
+        assert_eq!(out, expected);
+        all_near(&out, &expected, 0.0001);
     }
 }
