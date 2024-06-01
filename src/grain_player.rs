@@ -16,7 +16,7 @@ impl GrainPlayer {
     pub fn new() -> GrainPlayer {
         let mut grains_init = vec![];
         for _ in 0..MAX_GRAINS {
-            grains_init.push(Grain::new(0, 0.0, 0, 0, false));
+            grains_init.push(Grain::new(0, 0.0, 0, 0, false, 0.0));
         }
 
         GrainPlayer {
@@ -34,7 +34,14 @@ impl GrainPlayer {
     }
 
     pub fn schedule_grain(&mut self, wait: usize, offset: f32, duration: usize) {
-        let grain = Grain::new(wait, offset, duration, self.fade_duration, self.reverse);
+        let grain = Grain::new(
+            wait,
+            offset,
+            duration,
+            self.fade_duration,
+            self.reverse,
+            1.0,
+        );
 
         // replace a finished grain
         for i in 0..self.grains.len() {
