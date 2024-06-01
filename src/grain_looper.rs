@@ -105,7 +105,7 @@ impl GrainLooper {
         // duration needs to have the fade after it, as the fading region is at the end
         self.grain_player.schedule_grain(
             wait,
-            self.loop_offset + self.fade_duration,
+            (self.loop_offset + self.fade_duration) as f32,
             self.loop_duration + self.fade_duration,
         );
 
@@ -177,7 +177,7 @@ impl GrainLooper {
         if self.ticks_till_next_loop == 0 {
             self.grain_player.schedule_grain(
                 0,
-                self.loop_offset + self.fade_duration,
+                (self.loop_offset + self.fade_duration) as f32,
                 self.loop_duration + self.fade_duration,
             );
             self.ticks_till_next_loop = self.loop_duration;
@@ -513,13 +513,14 @@ mod tests {
         assert_eq!(out, expected);
     }
 
+    #[test]
     fn test_grain_looper_immediate_reverse_without_fade() {
         // test that an immediate reverse with a fade does not try to read into the future
         let mut looper = GrainLooper::new_with_length(10.0, 50, 0);
         let mut out = vec![];
 
         let loop_start_at = 8;
-        let stop_at = 14;
+        let stop_at = 16;
 
         for i in 0..loop_start_at {
             out.push(looper.tick(i as f32));
@@ -535,6 +536,15 @@ mod tests {
         for i in loop_start_at..stop_at {
             out.push(looper.tick(i as f32));
         }
+
+        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+
+        let loop_samples = vec![7.0, 6.0, 5.0, 4.0];
+
+        expected.extend(&loop_samples);
+        expected.extend(&loop_samples);
+
+        assert_eq!(out, expected);
     }
 
     #[test]

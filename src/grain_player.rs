@@ -16,7 +16,7 @@ impl GrainPlayer {
     pub fn new() -> GrainPlayer {
         let mut grains_init = vec![];
         for _ in 0..MAX_GRAINS {
-            grains_init.push(Grain::new(0, 0, 0, 0, false));
+            grains_init.push(Grain::new(0, 0.0, 0, 0, false));
         }
 
         GrainPlayer {
@@ -33,7 +33,7 @@ impl GrainPlayer {
         self.reverse = reverse;
     }
 
-    pub fn schedule_grain(&mut self, wait: usize, offset: usize, duration: usize) {
+    pub fn schedule_grain(&mut self, wait: usize, offset: f32, duration: usize) {
         let grain = Grain::new(wait, offset, duration, self.fade_duration, self.reverse);
 
         // replace a finished grain
@@ -70,7 +70,7 @@ impl GrainPlayer {
                 continue;
             }
             let (delay_pos, amplitude) = grain.tick();
-            out += delay_line.read(delay_pos + rolling_offset) * amplitude;
+            out += delay_line.read(delay_pos as usize + rolling_offset) * amplitude;
         }
         out
     }
@@ -120,7 +120,7 @@ mod tests {
         let mut player = GrainPlayer::new();
         let delay_line: DelayLine<f32> = DelayLine::new(100);
 
-        player.schedule_grain(2, 10, 4);
+        player.schedule_grain(2, 10.0, 4);
 
         assert_eq!(player.num_scheduled_grains(), 1);
         assert_eq!(player.num_playing_grains(), 0);
@@ -150,8 +150,8 @@ mod tests {
         let delay_line: DelayLine<f32> = DelayLine::new(100);
         player.set_fade_time(2);
 
-        player.schedule_grain(0, 10, 4);
-        player.schedule_grain(0, 10, 10);
+        player.schedule_grain(0, 10.0, 4);
+        player.schedule_grain(0, 10.0, 10);
 
         assert_eq!(player.num_playing_grains(), 2);
 
@@ -180,7 +180,7 @@ mod tests {
         fill_delay_ramp(&mut delay_line);
         let mut out = vec![];
 
-        player.schedule_grain(2, 10, 4);
+        player.schedule_grain(2, 10.0, 4);
 
         // tick past wait time
         for _ in 0..2 {
@@ -196,7 +196,7 @@ mod tests {
 
         out.clear();
         player.set_fade_time(1);
-        player.schedule_grain(2, 10, 4);
+        player.schedule_grain(2, 10.0, 4);
 
         // tick past wait time
         for _ in 0..2 {
