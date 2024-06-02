@@ -1,5 +1,13 @@
 use nih_plug::prelude::*;
 use std::sync::Arc;
+mod delay_line;
+mod grain;
+mod grain_looper;
+mod grain_player;
+mod ramped_value;
+mod stereo_pair;
+
+use grain_looper::GrainLooper;
 
 // This is a shortened version of the gain example with most comments removed, check out
 // https://github.com/robbert-vdh/nih-plug/blob/master/plugins/examples/gain/src/lib.rs to get
@@ -7,22 +15,27 @@ use std::sync::Arc;
 
 struct Metaloop {
     params: Arc<MetaloopParams>,
+    grain_looper: GrainLooper,
 }
 
 #[derive(Params)]
 struct MetaloopParams {
     /// The parameter's ID is used to identify the parameter in the wrappred plugin API. As long as
     /// these IDs remain constant, you can rename and reorder these fields as you wish. The
-    /// parameters are exposed to the host in the same order they were defined. In this case, this
-    /// gain parameter is stored as linear gain while the values are displayed in decibels.
-    #[id = "gain"]
-    pub gain: FloatParam,
+    /// parameters are exposed to the host in the same order they were defined.
+    /// Loop length in seconds
+    #[id = "loop-length"]
+    pub loop_length: FloatParam,
+
+    #[id = "loop"]
+    pub loop_param: BoolParam,
 }
 
 impl Default for Metaloop {
     fn default() -> Self {
         Self {
             params: Arc::new(MetaloopParams::default()),
+            grain_looper: GrainLooper::new(44100.0),
         }
     }
 }
@@ -30,29 +43,18 @@ impl Default for Metaloop {
 impl Default for MetaloopParams {
     fn default() -> Self {
         Self {
-            // This gain is stored as linear gain. NIH-plug comes with useful conversion functions
-            // to treat these kinds of parameters as if we were dealing with decibels. Storing this
-            // as decibels is easier to work with, but requires a conversion for every sample.
-            gain: FloatParam::new(
-                "Gain",
-                util::db_to_gain(0.0),
+            loop_length: FloatParam::new(
+                "Length",
+                0.1,
                 FloatRange::Skewed {
-                    min: util::db_to_gain(-30.0),
-                    max: util::db_to_gain(30.0),
-                    // This makes the range appear as if it was linear when displaying the values as
-                    // decibels
-                    factor: FloatRange::gain_skew_factor(-30.0, 30.0),
+                    min: 0.01,
+                    max: 1.0,
+                    factor: FloatRange::skew_factor(-2.0),
                 },
             )
-            // Because the gain parameter is stored as linear gain instead of storing the value as
-            // decibels, we need logarithmic smoothing
-            .with_smoother(SmoothingStyle::Logarithmic(50.0))
-            .with_unit(" dB")
-            // There are many predefined formatters we can use here. If the gain was stored as
-            // decibels instead of as a linear gain value, we could have also used the
-            // `.with_step_size(0.1)` function to get internal rounding.
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            .with_unit(" s"),
+
+            loop_param: BoolParam::new("Loop", false),
         }
     }
 }
@@ -101,12 +103,15 @@ impl Plugin for Metaloop {
     fn initialize(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
-        _buffer_config: &BufferConfig,
+        buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         // Resize buffers and perform other potentially expensive initialization operations here.
         // The `reset()` function is always called right after this function. You can remove this
         // function if you do not need it.
+        self.grain_looper
+            .set_sample_rate(buffer_config.sample_rate as f32);
+
         true
     }
 
@@ -122,11 +127,24 @@ impl Plugin for Metaloop {
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         for channel_samples in buffer.iter_samples() {
-            // Smoothing is optionally built into the parameters themselves
-            let gain = self.params.gain.smoothed.next();
+            let _num_samples = channel_samples.len();
 
+            self.grain_looper
+                .set_loop_duration(self.params.loop_length.value());
+
+            if self.params.loop_param.value() && !self.grain_looper.is_looping() {
+                self.grain_looper.set_loop_offset(0.1);
+                self.grain_looper.start_looping(0.01);
+            } else if !self.params.loop_param.value() && self.grain_looper.is_looping() {
+                self.grain_looper.stop_looping();
+            }
+
+            let mut left = true;
             for sample in channel_samples {
-                *sample *= gain;
+                if left {
+                    *sample = self.grain_looper.tick(sample.clone());
+                }
+                left = false;
             }
         }
 
