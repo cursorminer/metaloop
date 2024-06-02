@@ -33,6 +33,7 @@ pub struct GrainLooper {
     fade_duration: usize,
     fade_allowance: usize,
     dry_ramp: RampedValue,
+    ticks_since_loop_start: usize,
 }
 
 // Loops segments of audio, with the ability to scrub through the loop
@@ -67,6 +68,7 @@ impl GrainLooper {
             fade_duration: 0,
             fade_allowance: max_fade_time,
             dry_ramp: RampedValue::new(1.0),
+            ticks_since_loop_start: 0,
         }
     }
 
@@ -88,19 +90,40 @@ impl GrainLooper {
 
     // how long the loop is
     pub fn set_loop_duration(&mut self, duration_seconds: f32) {
-        self.loop_duration = (duration_seconds * self.sample_rate) as usize;
+        if !self.is_looping || self.ticks_since_loop_start > self.loop_duration {
+            self.loop_duration = (duration_seconds * self.sample_rate) as usize;
+            return;
+        }
+
+        // check to see if we have enough buffer to loop
+        // if the number of ticks since lop start is greater than the loop duration
+        // then it is ok to change the loop
+
+        // other wise, we need to fade back to dry and wait for the buffer to contain the whole loop
+        self.dry_ramp.ramp(1.0, self.fade_duration);
+        self.grain_player.stop_all_grains();
+
+        let wait = self.loop_duration - self.ticks_since_loop_start;
+        self.grain_player.schedule_grain(
+            wait,
+            (self.loop_offset + self.fade_duration) as f32,
+            self.loop_duration + self.fade_duration,
+        );
+        self.ticks_till_next_loop = wait + self.loop_duration;
 
         // the loop duration and fade should not be longer than the loopable region
         assert!(self.loop_duration + self.fade_duration <= self.loopable_region_length);
     }
 
-    // note that the loop start time should be offset by the fade duration in order to sync the maximum of the fade
-    // with the transient at the start of the loop
-    pub fn start_looping(&mut self, loop_start_time_seconds: f32) {
+    // note that the loop_start_point_seconds is toward the past, as we want to loop something that has already started
+    pub fn start_looping(&mut self, loop_start_point_seconds: f32) {
         self.is_looping = true;
 
+        // how far are we past the loop start time
+        self.ticks_since_loop_start = (loop_start_point_seconds * self.sample_rate) as usize;
+
         // schedule the first grain
-        let wait = (loop_start_time_seconds * self.sample_rate) as usize;
+        let wait = self.loop_duration - self.ticks_since_loop_start;
 
         // offset needs to have the fade before it, so that the transient is at full vol
         // duration needs to have the fade after it, as the fading region is at the end
@@ -137,6 +160,8 @@ impl GrainLooper {
     pub fn tick(&mut self, input: f32) -> f32 {
         self.rolling_buffer.tick(input);
         self.rolling_offset += 1;
+        self.ticks_since_loop_start += 1;
+
         let looped;
 
         let dry = input;
@@ -248,7 +273,7 @@ mod tests {
         // set offset to be the loop length to loop the most recent 5 samples
         looper.set_loop_offset(0.5);
         looper.set_loop_duration(0.5);
-        looper.start_looping(0.0);
+        looper.start_looping(0.5);
         for i in 5..20 {
             out.push(looper.tick((i + 10) as f32));
         }
@@ -284,7 +309,7 @@ mod tests {
         // set offset to be the loop length to loop the most recent 5 samples
         looper.set_loop_offset(0.5);
         looper.set_loop_duration(0.5);
-        looper.start_looping(0.0);
+        looper.start_looping(0.5);
         for _i in 8..15 {
             out.push(looper.tick(1.0));
         }
@@ -322,7 +347,7 @@ mod tests {
         // set offset to be the loop length to loop the most recent 4 samples
         looper.set_loop_offset(0.4);
         looper.set_loop_duration(0.4);
-        looper.start_looping(0.0);
+        looper.start_looping(0.4);
 
         for i in loop_start..loop_stop {
             out.push(looper.tick(i as f32));
@@ -388,7 +413,7 @@ mod tests {
         looper.set_fade_time(0.0);
         looper.set_loop_offset(0.5);
         looper.set_loop_duration(0.5);
-        looper.start_looping(0.0);
+        looper.start_looping(0.5);
 
         assert!(!looper.is_using_static_buffer());
 
@@ -435,7 +460,7 @@ mod tests {
         looper.set_fade_time(0.25);
         looper.set_loop_offset(0.5);
         looper.set_loop_duration(0.5);
-        looper.start_looping(0.0);
+        looper.start_looping(0.5);
 
         for i in loop_start..loop_start + ticks_before_switch_to_static_buffer {
             assert!(!looper.is_using_static_buffer());
@@ -489,7 +514,7 @@ mod tests {
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
         looper.set_loop_offset(0.4);
         looper.set_loop_duration(0.4);
-        looper.start_looping(0.0);
+        looper.start_looping(0.4);
 
         for i in loop_start_at..change_offset_at {
             out.push(looper.tick(i as f32));
@@ -539,7 +564,7 @@ mod tests {
         looper.set_loop_offset(0.4);
         looper.set_loop_duration(0.4);
         looper.set_reverse(true);
-        looper.start_looping(0.0);
+        looper.start_looping(0.4);
 
         for i in loop_start_at..stop_at {
             out.push(looper.tick(i as f32));
@@ -573,7 +598,7 @@ mod tests {
         looper.set_loop_offset(0.4);
         looper.set_loop_duration(0.4);
         looper.set_reverse(true);
-        looper.start_looping(0.0);
+        looper.start_looping(0.4);
 
         for i in loop_start_at..stop_at {
             out.push(looper.tick(i as f32));
@@ -589,5 +614,56 @@ mod tests {
         expected.extend(&loop_samples);
         assert_eq!(out, expected);
         all_near(&out, &expected, 0.0001);
+    }
+
+    #[test]
+    fn test_grain_looper_short_to_long() {
+        // test a 5 sample loop, no fading
+        let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
+        let mut out = vec![];
+
+        let loop_start = 5;
+        let loop_change = 10;
+        let loop_stop = 26;
+
+        let first_len = 0.2;
+        let second_len = 0.8;
+
+        for i in 0..loop_start {
+            out.push(looper.tick((i + 10) as f32));
+        }
+
+        looper.set_fade_time(0.0);
+
+        // set offset to be the loop length to loop the most recent 5 samples
+        looper.set_loop_offset(first_len);
+        looper.set_loop_duration(first_len);
+        looper.start_looping(first_len);
+        for i in loop_start..loop_change {
+            out.push(looper.tick((i + 10) as f32));
+        }
+
+        looper.set_loop_duration(second_len);
+
+        // this means that the loop is 8 samples long but we don't have enough samples to do it yet, so we switch back to dry
+        // we wait till the last loop stops
+        for i in loop_change..loop_stop {
+            out.push(looper.tick((i + 10) as f32));
+        }
+
+        let mut expected = vec![10.0, 11.0, 12.0, 13.0, 14.0];
+        let loop_one = vec![13.0, 14.0];
+        // when loop one stops and loop two is yet to start, should resemble end of loop two
+        let dry_thru = vec![17.0, 18.0, 19.0, 20.0];
+        let loop_two = vec![13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0];
+
+        expected.extend(&loop_one);
+        expected.extend(&loop_one);
+        expected.extend(&loop_one);
+        expected.extend(&dry_thru);
+        expected.extend(&loop_two);
+        expected.extend(&loop_two);
+
+        assert_eq!(out, expected);
     }
 }
