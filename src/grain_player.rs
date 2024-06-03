@@ -5,9 +5,6 @@ pub const MAX_GRAINS: usize = 10;
 
 pub struct GrainPlayer {
     grains: Vec<Grain>,
-    fade_duration: usize,
-    reverse: bool,
-    speed: f32,
 }
 
 // schedule and play grains
@@ -21,32 +18,11 @@ impl GrainPlayer {
 
         GrainPlayer {
             grains: grains_init,
-            fade_duration: 0,
-            reverse: false,
-            speed: 1.0,
         }
     }
 
-    pub fn set_fade_time(&mut self, fade: usize) {
-        self.fade_duration = fade;
-    }
-    pub fn set_reverse(&mut self, reverse: bool) {
-        self.reverse = reverse;
-    }
-    pub fn set_speed(&mut self, speed: f32) {
-        self.speed = speed;
-    }
-
-    pub fn schedule_grain(&mut self, wait: usize, offset: f32, duration: usize) {
-        let grain = Grain::new(
-            wait,
-            offset,
-            duration,
-            self.fade_duration,
-            self.reverse,
-            self.speed,
-        );
-
+    // todo: create the grain higher up and pass in here, don't need members
+    pub fn schedule_grain(&mut self, grain: Grain) {
         // replace a finished grain
         for i in 0..self.grains.len() {
             if self.grains[i].is_finished() {
@@ -134,7 +110,7 @@ mod tests {
         let mut player = GrainPlayer::new();
         let delay_line: DelayLine<f32> = DelayLine::new(100);
 
-        player.schedule_grain(2, 10.0, 4);
+        player.schedule_grain(Grain::new(2, 10.0, 4, 0, false, 1.0));
 
         assert_eq!(player.num_scheduled_grains(), 1);
         assert_eq!(player.num_playing_grains(), 0);
@@ -162,10 +138,9 @@ mod tests {
     fn test_grain_player_stop_all() {
         let mut player = GrainPlayer::new();
         let delay_line: DelayLine<f32> = DelayLine::new(100);
-        player.set_fade_time(2);
 
-        player.schedule_grain(0, 10.0, 4);
-        player.schedule_grain(0, 10.0, 10);
+        player.schedule_grain(Grain::new(0, 10.0, 4, 2, false, 1.0));
+        player.schedule_grain(Grain::new(0, 10.0, 10, 2, false, 1.0));
 
         assert_eq!(player.num_playing_grains(), 2);
 
@@ -194,7 +169,7 @@ mod tests {
         fill_delay_ramp(&mut delay_line);
         let mut out = vec![];
 
-        player.schedule_grain(2, 10.0, 4);
+        player.schedule_grain(Grain::new(2, 10.0, 4, 0, false, 1.0));
 
         // tick past wait time
         for _ in 0..2 {
@@ -209,8 +184,7 @@ mod tests {
         assert_eq!(out, vec![0.0, 0.0, 10.0, 11.0, 12.0, 13.0, 0.0]);
 
         out.clear();
-        player.set_fade_time(1);
-        player.schedule_grain(2, 10.0, 4);
+        player.schedule_grain(Grain::new(2, 10.0, 4, 1, false, 1.0));
 
         // tick past wait time
         for _ in 0..2 {

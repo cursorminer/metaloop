@@ -1,4 +1,5 @@
 use crate::delay_line::DelayLine;
+use crate::grain::Grain;
 use crate::grain_player::GrainPlayer;
 use crate::ramped_value::RampedValue;
 
@@ -34,6 +35,8 @@ pub struct GrainLooper {
     fade_allowance: usize,
     dry_ramp: RampedValue,
     ticks_since_loop_start: usize,
+    reverse: bool,
+    speed: f32,
 }
 
 // Loops segments of audio, with the ability to scrub through the loop
@@ -69,6 +72,8 @@ impl GrainLooper {
             fade_allowance: max_fade_time,
             dry_ramp: RampedValue::new(1.0),
             ticks_since_loop_start: 0,
+            reverse: false,
+            speed: 1.0,
         }
     }
 
@@ -79,7 +84,7 @@ impl GrainLooper {
     pub fn set_fade_time(&mut self, fade: f32) {
         let fade_samples = (fade * self.sample_rate) as usize;
         assert!(fade_samples <= self.fade_allowance);
-        self.grain_player.set_fade_time(fade_samples);
+
         self.fade_duration = fade_samples;
     }
 
@@ -104,11 +109,7 @@ impl GrainLooper {
         self.grain_player.stop_all_grains();
 
         let wait = self.loop_duration - self.ticks_since_loop_start;
-        self.grain_player.schedule_grain(
-            wait,
-            (self.loop_offset + self.fade_duration) as f32,
-            self.loop_duration + self.fade_duration,
-        );
+        self.schedule_grain(wait);
         self.ticks_till_next_loop = wait + self.loop_duration;
 
         // the loop duration and fade should not be longer than the loopable region
@@ -127,17 +128,24 @@ impl GrainLooper {
 
         // offset needs to have the fade before it, so that the transient is at full vol
         // duration needs to have the fade after it, as the fading region is at the end
-        self.grain_player.schedule_grain(
-            wait,
-            (self.loop_offset + self.fade_duration) as f32,
-            self.loop_duration + self.fade_duration,
-        );
+        self.schedule_grain(wait);
 
         self.ticks_till_next_loop = wait + self.loop_duration;
         self.rolling_offset = 0;
         self.use_static_buffer = false;
         self.dry_ramp.set(1.0);
         self.dry_ramp.ramp(0.0, self.fade_duration);
+    }
+
+    fn schedule_grain(&mut self, wait: usize) {
+        self.grain_player.schedule_grain(Grain::new(
+            wait,
+            (self.loop_offset + self.fade_duration) as f32,
+            self.loop_duration + self.fade_duration,
+            self.fade_duration,
+            self.reverse,
+            self.speed,
+        ));
     }
 
     pub fn stop_looping(&mut self) {
@@ -150,11 +158,11 @@ impl GrainLooper {
     }
 
     pub fn set_reverse(&mut self, reverse: bool) {
-        self.grain_player.set_reverse(reverse);
+        self.reverse = reverse;
     }
 
     pub fn set_speed(&mut self, speed: f32) {
-        self.grain_player.set_speed(speed);
+        self.speed = speed;
     }
 
     pub fn tick(&mut self, input: f32) -> f32 {
@@ -205,11 +213,7 @@ impl GrainLooper {
     // ticks down the counter that will trigger a new loop as the old one starts to fade out
     fn tick_next_loop_trigger(&mut self) {
         if self.ticks_till_next_loop == 0 {
-            self.grain_player.schedule_grain(
-                0,
-                (self.loop_offset + self.fade_duration) as f32,
-                self.loop_duration + self.fade_duration,
-            );
+            self.schedule_grain(0);
             self.ticks_till_next_loop = self.loop_duration;
         }
         self.ticks_till_next_loop -= 1;
