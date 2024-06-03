@@ -6,6 +6,7 @@ mod grain;
 mod grain_looper;
 mod grain_player;
 mod ramped_value;
+mod scheduler;
 mod stereo_pair;
 
 use grain_looper::GrainLooper;
