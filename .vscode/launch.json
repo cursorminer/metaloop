@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'metaloop'",
+            "name": "Debug executable 'xtask'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=metaloop",
-                    "--package=metaloop"
+                    "--bin=xtask",
+                    "--package=xtask"
                 ],
                 "filter": {
-                    "name": "metaloop",
+                    "name": "xtask",
                     "kind": "bin"
                 }
             },
@@ -25,18 +25,34 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'metaloop'",
+            "name": "Debug unit tests in executable 'xtask'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=metaloop",
-                    "--package=metaloop"
+                    "--bin=xtask",
+                    "--package=xtask"
                 ],
                 "filter": {
-                    "name": "metaloop",
+                    "name": "xtask",
                     "kind": "bin"
                 }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'metaloop'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=metaloop"
+                ],
+                "filter": {}
             },
             "args": [],
             "cwd": "${workspaceFolder}"
