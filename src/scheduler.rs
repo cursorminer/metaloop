@@ -1,10 +1,10 @@
 // E is the event type
-pub struct Scheduler<E: Clone + Copy + PartialEq + Eq> {
+pub struct Scheduler<E: Clone + Copy + PartialEq> {
     events: Vec<(f32, E)>,
 }
 
 #[allow(dead_code)]
-impl<E: Clone + Copy + PartialEq + Eq> Scheduler<E> {
+impl<E: Clone + Copy + PartialEq> Scheduler<E> {
     pub fn new() -> Scheduler<E> {
         Scheduler { events: Vec::new() }
     }
