@@ -132,12 +132,11 @@ impl Plugin for Metaloop {
         for channel_samples in buffer.iter_samples() {
             let _num_samples = channel_samples.len();
 
-            self.grain_looper
-                .set_loop_duration(self.params.loop_length.value());
+            self.grain_looper.set_grid(self.params.loop_length.value());
 
             if self.params.loop_param.value() && !self.grain_looper.is_looping() {
                 self.grain_looper.set_loop_offset(0.1);
-                self.grain_looper.start_looping(0.01);
+                self.grain_looper.start_looping();
             } else if !self.params.loop_param.value() && self.grain_looper.is_looping() {
                 self.grain_looper.stop_looping();
             }

@@ -1,6 +1,8 @@
 use crate::delay_line::DelayLine;
 use crate::grain::Grain;
 use crate::grain_player::GrainPlayer;
+use crate::loop_scheduler::LoopEvent;
+use crate::loop_scheduler::LoopScheduler;
 use crate::ramped_value::RampedValue;
 
 // how much of the buffer we allow to scrub through
@@ -15,15 +17,14 @@ const MAX_FADE_TIME: usize = 1000;
 // copied to the input delay line
 pub struct GrainLooper {
     grain_player: GrainPlayer<f32>,
+    loop_scheduler: LoopScheduler,
     is_looping: bool,
     sample_rate: f32,
-    ticks_till_next_loop: usize,
 
     loop_offset: usize,
-    loop_duration: usize,
     fade_duration: usize,
     dry_ramp: RampedValue,
-    ticks_since_loop_start: usize,
+    song_ticks: usize,
     reverse: bool,
     speed: f32,
 }
@@ -47,16 +48,15 @@ impl GrainLooper {
                 loopable_region_length,
                 max_fade_time,
             ),
+            loop_scheduler: LoopScheduler::new(),
             is_looping: false,
             sample_rate,
-            ticks_till_next_loop: std::usize::MAX,
 
             loop_offset: 0,
-            loop_duration: 0,
             fade_duration: 0,
 
             dry_ramp: RampedValue::new(1.0),
-            ticks_since_loop_start: 0,
+            song_ticks: 0,
             reverse: false,
             speed: 1.0,
         }
@@ -71,6 +71,8 @@ impl GrainLooper {
         assert!(fade_samples <= MAX_FADE_TIME);
 
         self.fade_duration = fade_samples;
+
+        self.loop_scheduler.set_fade_lead_in(fade);
     }
 
     // offset the loop in the buffer, i.e. "scrub"
@@ -79,53 +81,21 @@ impl GrainLooper {
     }
 
     // how long the loop is
-    pub fn set_loop_duration(&mut self, duration_seconds: f32) {
-        if !self.is_looping || self.ticks_since_loop_start > self.loop_duration {
-            self.loop_duration = (duration_seconds * self.sample_rate) as usize;
-            return;
-        }
-
-        // check to see if we have enough buffer to loop
-        // if the number of ticks since lop start is greater than the loop duration
-        // then it is ok to change the loop
-
-        // other wise, we need to fade back to dry and wait for the buffer to contain the whole loop
-        self.dry_ramp.ramp(1.0, self.fade_duration);
-        self.grain_player.stop_all_grains();
-
-        let wait = self.loop_duration - self.ticks_since_loop_start;
-        self.schedule_grain(wait);
-        self.ticks_till_next_loop = wait + self.loop_duration;
-
-        // the loop duration and fade should not be longer than the loopable region
-        assert!(
-            self.loop_duration + self.fade_duration <= self.grain_player.loopable_region_length()
-        );
+    pub fn set_grid(&mut self, duration_seconds: f32) {
+        self.loop_scheduler.set_grid_interval(duration_seconds);
     }
 
     // note that the loop_start_point_seconds is toward the past, as we want to loop something that has already started
-    pub fn start_looping(&mut self, loop_start_point_seconds: f32) {
-        self.is_looping = true;
-
-        // how far are we past the loop start time
-        self.ticks_since_loop_start = (loop_start_point_seconds * self.sample_rate) as usize;
-
-        // schedule the first grain
-        let wait = self.loop_duration - self.ticks_since_loop_start;
-
-        self.grain_player.start_looping();
-        self.schedule_grain(wait);
-
-        self.ticks_till_next_loop = wait + self.loop_duration;
-        self.dry_ramp.set(1.0);
-        self.dry_ramp.ramp(0.0, self.fade_duration);
+    pub fn start_looping(&mut self) {
+        self.loop_scheduler.start_looping();
     }
 
-    fn schedule_grain(&mut self, wait: usize) {
+    fn schedule_grain(&mut self, wait: usize, duration: usize) {
+        // wait might go away
         self.grain_player.schedule_grain(Grain::new(
             wait,
             (self.loop_offset + self.fade_duration) as f32,
-            self.loop_duration + self.fade_duration,
+            duration + self.fade_duration,
             self.fade_duration,
             self.reverse,
             self.speed,
@@ -133,13 +103,7 @@ impl GrainLooper {
     }
 
     pub fn stop_looping(&mut self) {
-        self.is_looping = false;
-        self.ticks_till_next_loop = std::usize::MAX;
-        // start a fade back to dry
-        self.grain_player.stop_looping();
-        self.grain_player.stop_all_grains();
-        self.dry_ramp.set(0.0);
-        self.dry_ramp.ramp(1.0, self.fade_duration);
+        self.loop_scheduler.stop_looping();
     }
 
     pub fn set_reverse(&mut self, reverse: bool) {
@@ -151,11 +115,33 @@ impl GrainLooper {
     }
 
     pub fn tick(&mut self, input: f32) -> f32 {
-        self.ticks_since_loop_start += 1;
+        // for now we work out the beat time here
+        let song_time = self.song_ticks as f32 / self.sample_rate;
+        let events = self.loop_scheduler.tick(song_time);
+
+        for event in events {
+            match event {
+                LoopEvent::StartGrain { duration } => {
+                    print!("start grain");
+                    self.schedule_grain(0, self.beat_time__to_samples(duration));
+                    self.is_looping = true;
+                }
+                LoopEvent::StopGrain => {
+                    // we stop them all
+                    self.grain_player.stop_all_grains();
+                }
+                LoopEvent::FadeInDry => {
+                    self.dry_ramp.ramp(1.0, self.fade_duration);
+                }
+                LoopEvent::FadeOutDry => {
+                    self.dry_ramp.ramp(0.0, self.fade_duration);
+                }
+                _ => {}
+            }
+        }
+        self.song_ticks += 1;
 
         let dry = input;
-
-        self.tick_next_loop_trigger();
 
         let looped = self.grain_player.tick(input);
 
@@ -163,13 +149,9 @@ impl GrainLooper {
         looped + dry_level * dry
     }
 
-    // ticks down the counter that will trigger a new loop as the old one starts to fade out
-    fn tick_next_loop_trigger(&mut self) {
-        if self.ticks_till_next_loop == 0 {
-            self.schedule_grain(0);
-            self.ticks_till_next_loop = self.loop_duration;
-        }
-        self.ticks_till_next_loop -= 1;
+    fn beat_time__to_samples(&self, time: f32) -> usize {
+        // at thme moment its in seconds
+        (time * self.sample_rate) as usize
     }
 
     fn num_playing_grains(&self) -> usize {
@@ -217,8 +199,8 @@ mod tests {
 
         // set offset to be the loop length to loop the most recent 5 samples
         looper.set_loop_offset(0.5);
-        looper.set_loop_duration(0.5);
-        looper.start_looping(0.5);
+        looper.set_grid(0.5);
+        looper.start_looping();
         for i in 5..20 {
             out.push(looper.tick((i + 10) as f32));
         }
@@ -253,8 +235,8 @@ mod tests {
         looper.set_fade_time(0.2);
         // set offset to be the loop length to loop the most recent 5 samples
         looper.set_loop_offset(0.5);
-        looper.set_loop_duration(0.5);
-        looper.start_looping(0.5);
+        looper.set_grid(0.5);
+        looper.start_looping();
         for _i in 8..15 {
             out.push(looper.tick(1.0));
         }
@@ -291,8 +273,8 @@ mod tests {
         looper.set_fade_time(0.2);
         // set offset to be the loop length to loop the most recent 4 samples
         looper.set_loop_offset(0.4);
-        looper.set_loop_duration(0.4);
-        looper.start_looping(0.4);
+        looper.set_grid(0.4);
+        looper.start_looping();
 
         for i in loop_start..loop_stop {
             out.push(looper.tick(i as f32));
@@ -359,8 +341,8 @@ mod tests {
         looper.set_fade_time(0.0);
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
         looper.set_loop_offset(0.4);
-        looper.set_loop_duration(0.4);
-        looper.start_looping(0.4);
+        looper.set_grid(0.4);
+        looper.start_looping();
 
         for i in loop_start_at..change_offset_at {
             out.push(looper.tick(i as f32));
@@ -368,7 +350,7 @@ mod tests {
         // offset the loop backwards by 2 samples (2,3,4,5)
         looper.set_loop_offset(0.6);
         // change the length of the loop to be 3 samples (2,3,4)
-        looper.set_loop_duration(0.3);
+        looper.set_grid(0.3);
         // reverse the loop (4,3,2)
         looper.set_reverse(true);
         // slow the loop down by half (4, 3.5, 3)
@@ -408,9 +390,9 @@ mod tests {
         looper.set_fade_time(0.0);
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
         looper.set_loop_offset(0.4);
-        looper.set_loop_duration(0.4);
+        looper.set_grid(0.4);
         looper.set_reverse(true);
-        looper.start_looping(0.4);
+        looper.start_looping();
 
         for i in loop_start_at..stop_at {
             out.push(looper.tick(i as f32));
@@ -442,9 +424,9 @@ mod tests {
         looper.set_fade_time(0.2);
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
         looper.set_loop_offset(0.4);
-        looper.set_loop_duration(0.4);
+        looper.set_grid(0.4);
         looper.set_reverse(true);
-        looper.start_looping(0.4);
+        looper.start_looping();
 
         for i in loop_start_at..stop_at {
             out.push(looper.tick(i as f32));
@@ -483,13 +465,13 @@ mod tests {
 
         // set offset to be the loop length to loop the most recent 5 samples
         looper.set_loop_offset(first_len);
-        looper.set_loop_duration(first_len);
-        looper.start_looping(first_len);
+        looper.set_grid(first_len);
+        looper.start_looping();
         for i in loop_start..loop_change {
             out.push(looper.tick((i + 10) as f32));
         }
 
-        looper.set_loop_duration(second_len);
+        looper.set_grid(second_len);
 
         // this means that the loop is 8 samples long but we don't have enough samples to do it yet, so we switch back to dry
         // we wait till the last loop stops

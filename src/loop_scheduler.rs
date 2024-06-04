@@ -3,7 +3,7 @@
 use crate::scheduler::Scheduler;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum LoopEvent {
+pub enum LoopEvent {
     StartGrain { duration: f32 },
     StopGrain,
     FadeOutDry,
@@ -110,7 +110,7 @@ impl LoopScheduler {
             .schedule_event(next_grid_interval, LoopEvent::FadeOutDry);
     }
 
-    fn stop_looping(&mut self) {
+    pub fn stop_looping(&mut self) {
         assert!(self.is_looping);
         self.is_looping = false;
         // schedule a fade in
