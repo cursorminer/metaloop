@@ -37,7 +37,6 @@ mod tests {
     use super::*;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-
     pub enum TestEvent {
         A,
         B,
