@@ -6,10 +6,10 @@ mod delay_line;
 mod grain;
 mod grain_looper;
 mod grain_player;
+mod loop_scheduler;
 mod ramped_value;
 mod scheduler;
 mod stereo_pair;
-
 use grain_looper::GrainLooper;
 
 // This is a shortened version of the gain example with most comments removed, check out
