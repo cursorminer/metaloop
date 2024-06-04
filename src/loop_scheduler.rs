@@ -183,5 +183,77 @@ mod tests {
         scheduler.stop_looping();
         let out2 = scheduler.tick(3.0);
         assert_eq!(out2, vec![LoopEvent::StopGrain, LoopEvent::FadeInDry]);
+        let out9 = scheduler.tick(9.0);
+        assert_eq!(out9, vec![]);
+    }
+
+    #[test]
+    fn test_loop_scheduler_shorten_loop() {
+        let mut scheduler = LoopScheduler::new();
+
+        let grid1 = 1.0;
+        let grid2 = 0.5;
+
+        let out0 = scheduler.tick(0.0);
+        assert_eq!(out0, vec![]);
+        scheduler.set_grid_interval(grid1);
+
+        scheduler.start_looping();
+        let out1 = scheduler.tick(1.0);
+        assert_eq!(out1, vec![LoopEvent::StartGrain, LoopEvent::FadeOutDry]);
+
+        let out15 = scheduler.tick(1.5);
+        assert_eq!(out15, vec![]);
+
+        let out2 = scheduler.tick(2.0);
+        assert_eq!(out2, vec![LoopEvent::StartGrain]);
+
+        let out225 = scheduler.tick(2.25);
+        assert_eq!(out225, vec![]);
+        scheduler.set_grid_interval(grid2);
+
+        // the next loop starts at 2.5, the existing one is stopped
+        let out25 = scheduler.tick(2.5);
+        assert_eq!(out25, vec![LoopEvent::StopGrain, LoopEvent::StartGrain]);
+    }
+
+    #[test]
+    fn test_loop_scheduler_lengthen_loop_early() {
+        // this tests the "back to dry" when the loop is lengthened very
+        // soon after looping is started
+        let mut scheduler = LoopScheduler::new();
+
+        let grid1 = 1.0;
+        let grid2 = 4.0;
+
+        let out0 = scheduler.tick(0.0);
+        assert_eq!(out0, vec![]);
+        scheduler.set_grid_interval(grid1);
+
+        scheduler.start_looping();
+        let out1 = scheduler.tick(1.0);
+        assert_eq!(out1, vec![LoopEvent::StartGrain, LoopEvent::FadeOutDry]);
+
+        let out15 = scheduler.tick(1.5);
+        assert_eq!(out15, vec![]);
+
+        let out2 = scheduler.tick(2.0);
+        assert_eq!(out2, vec![LoopEvent::StartGrain]);
+
+        let out225 = scheduler.tick(2.25);
+        assert_eq!(out225, vec![]);
+        scheduler.set_grid_interval(grid2);
+
+        // when the short loop stops, we fade back to dry
+        let out25 = scheduler.tick(3.0);
+        assert_eq!(out25, vec![LoopEvent::FadeInDry]);
+
+        // then the new loop starts
+        let out4 = scheduler.tick(4.0);
+        assert_eq!(out4, vec![LoopEvent::FadeOutDry, LoopEvent::StartGrain]);
+
+        // and continues
+        let out5 = scheduler.tick(8.0);
+        assert_eq!(out5, vec![LoopEvent::StartGrain]);
     }
 }
