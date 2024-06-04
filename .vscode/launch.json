@@ -54,7 +54,9 @@
                 ],
                 "filter": {}
             },
-            "args": [],
+            "args": [
+                "grain_player"
+            ],
             "cwd": "${workspaceFolder}"
         }
     ]

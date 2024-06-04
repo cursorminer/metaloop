@@ -74,6 +74,10 @@ where
     pub fn len(&self) -> usize {
         return self.buffer.len();
     }
+
+    pub fn buffer(&self) -> &Vec<T> {
+        &self.buffer
+    }
 }
 
 #[allow(dead_code)]
