@@ -79,7 +79,6 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     pub fn stop_looping(&mut self) {
         self.is_filling_static_buffer = false;
         self.use_static_buffer = false;
-        self.rolling_offset = 0;
     }
 
     pub fn tick(&mut self, input: T) -> T {

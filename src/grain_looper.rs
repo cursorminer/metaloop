@@ -113,8 +113,7 @@ impl GrainLooper {
         // schedule the first grain
         let wait = self.loop_duration - self.ticks_since_loop_start;
 
-        // offset needs to have the fade before it, so that the transient is at full vol
-        // duration needs to have the fade after it, as the fading region is at the end
+        self.grain_player.start_looping();
         self.schedule_grain(wait);
 
         self.ticks_till_next_loop = wait + self.loop_duration;
@@ -137,6 +136,7 @@ impl GrainLooper {
         self.is_looping = false;
         self.ticks_till_next_loop = std::usize::MAX;
         // start a fade back to dry
+        self.grain_player.stop_looping();
         self.grain_player.stop_all_grains();
         self.dry_ramp.set(0.0);
         self.dry_ramp.ramp(1.0, self.fade_duration);
@@ -301,10 +301,10 @@ mod tests {
         let first_faded = 6.0 * 2.0 / 3.0;
         let second_faded = 7.0 / 3.0 + 2.0 / 3.0;
 
-        let third = 0.33333334;
-        let two_thirds = 0.6666667;
+        let one_third = 0.33333334;
+        let two_third = 0.6666667;
         let loop_grain_contents = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
-        let fades = vec![third, two_thirds, 1.0, 1.0, two_thirds, third];
+        let fades = vec![one_third, two_third, 1.0, 1.0, two_third, one_third];
         let faded = loop_grain_contents
             .iter()
             .zip(fades.iter())
@@ -332,8 +332,9 @@ mod tests {
         }
 
         // expect the dry to fade back in from whatever the loop was doing
-        let fifth_fade = 15.0 / 3.0 + 2.0 * 2.0 / 3.0;
-        let sixth_fade = 16.0 * 2.0 / 3.0 + 3.0 / 3.0;
+        let fifth_fade = 15.0 * one_third + 2.0 * two_third;
+        let sixth_fade = 16.0 * two_third + 3.0 * one_third;
+        //assert_eq!(out, vec![fifth_fade, sixth_fade, 17.0, 18.0, 19.0]);
         all_near(
             &out,
             &vec![fifth_fade, sixth_fade, 17.0, 18.0, 19.0],
@@ -463,7 +464,7 @@ mod tests {
 
     #[test]
     fn test_grain_looper_short_to_long() {
-        // test a 5 sample loop, no fading
+        // test that if a short loop is changed to a longer loop, it still starts in the same place
         let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
         let mut out = vec![];
 
