@@ -85,7 +85,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     pub fn tick(&mut self, input: T) -> T {
         self.rolling_buffer.tick(input);
         self.rolling_offset += 1;
-        self.tick_static_buffer_copy(input);
+        self.tick_static_buffer_copy();
 
         let out;
 
@@ -132,7 +132,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     }
 
     // that when the loopable region exits the rolling buffer, we can use the static one
-    fn tick_static_buffer_copy(&mut self, input: T) {
+    fn tick_static_buffer_copy(&mut self) {
         // don't tick it if its full and we're using it, or if we're not looping
         if self.use_static_buffer || !self.is_filling_static_buffer {
             return;
@@ -281,14 +281,14 @@ mod tests {
         // if we schedule a grain with an offset of 0 it should just ouput the input
         player.schedule_grain(Grain::new(0, 0.0, 20, 0, false, 1.0));
 
-        let N = 10;
+        let num_samples = 10;
 
-        let input: Vec<f32> = (0..N).map(|x| x as f32).collect();
+        let input: Vec<f32> = (0..num_samples).map(|x| x as f32).collect();
         let mut input_iter = input.iter();
 
         let mut output = vec![];
         // tick past wait time
-        for _ in 0..N {
+        for _ in 0..num_samples {
             output.push(player.tick(*input_iter.next().unwrap()));
         }
 
@@ -347,28 +347,31 @@ mod tests {
     #[test]
     fn test_grain_player_output() {
         let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0);
-        let N = 20;
-        let pre_input: Vec<f32> = (0..N).map(|x| x as f32).collect();
+
+        // fill buffer with initial 10 samples
+        let n_pre_input = 10;
+        let pre_input: Vec<f32> = (0..n_pre_input).map(|x| x as f32).collect();
         for input in pre_input.iter() {
             player.tick(*input);
         }
 
         player.start_looping();
-        let input: Vec<f32> = (N..2 * N).map(|x| (x + 10) as f32).collect();
+        let n_input = n_pre_input + 5 + 6 + 6;
+        let input: Vec<f32> = (n_pre_input..n_input).map(|x| x as f32).collect();
 
         // once looping all grains with the same offset should output the same thing
 
         // this grain reads the rolling buffer
-        player.schedule_grain(Grain::new(2, 10.0, 3, 0, false, 1.0));
-        let expected_g1 = vec![0.0, 0.0, 10.0, 11.0, 12.0];
+        player.schedule_grain(Grain::new(2, 5.0, 3, 0, false, 1.0));
+        let expected_g1 = vec![0.0, 0.0, 5.0, 6.0, 7.0];
 
         // this grain reads both the rolling buffer and then the static buffer
-        player.schedule_grain(Grain::new(8, 10.0, 3, 0, false, 1.0));
-        let expected_g2 = vec![0.0, 0.0, 0.0, 10.0, 11.0, 12.0];
+        player.schedule_grain(Grain::new(8, 5.0, 3, 0, false, 1.0));
+        let expected_g2 = vec![0.0, 0.0, 0.0, 5.0, 6.0, 7.0];
 
         // this grain reads the static buffer
-        player.schedule_grain(Grain::new(14, 10.0, 3, 0, false, 1.0));
-        let expected_g3 = vec![0.0, 0.0, 0.0, 10.0, 11.0, 12.0];
+        player.schedule_grain(Grain::new(14, 5.0, 3, 0, false, 1.0));
+        let expected_g3 = vec![0.0, 0.0, 0.0, 5.0, 6.0, 7.0];
 
         let mut input_iter = input.iter();
 
@@ -391,106 +394,58 @@ mod tests {
         }
         assert_eq!(out3, expected_g3);
     }
-    /*
 
     #[test]
-    fn test_grain_looper_switch_to_static() {
-        // the loopable region is only 4 samples long
-        let mut looper = GrainPlayer::new_with_length(8.0, 4, 0);
-        let mut out = vec![];
-
-        let loop_start = 4;
-        let ticks_before_switch_to_static_buffer = looper.ticks_before_switch_to_static_buffer();
-
-        // fill the rolling buffer with 4 samples
-        for i in 0..loop_start {
-            out.push(looper.tick((i + 10) as f32));
+    fn test_grain_player_output_fade() {
+        // set a max fade time of 2
+        // check that it can be used
+        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 4);
+        let n_pre_input = 10;
+        let pre_input: Vec<f32> = (0..n_pre_input).map(|x| x as f32).collect();
+        for input in pre_input.iter() {
+            player.tick(*input);
         }
-        // start looping those 4 samples
-        // looper.set_fade_time(0.0);
-        // looper.set_loop_offset(0.5);
-        // looper.set_loop_duration(0.5);
-        // looper.start_looping(0.5);
 
-        assert!(!looper.is_using_static_buffer());
+        let n_input = n_pre_input + 6 + 6 + 6;
+        player.start_looping();
+        let input: Vec<f32> = (n_pre_input..n_input).map(|x| (x + 10) as f32).collect();
 
-        // now the static buffer starts filling
-        for i in loop_start..loop_start + ticks_before_switch_to_static_buffer {
-            out.push(looper.tick((i + 10) as f32));
-        }
-        // after the loopable region has passed, we should be using the static buffer
-        assert!(looper.is_using_static_buffer());
+        // once looping all grains with the same offset should output the same thing
+        let fade = 1;
 
-        // check the output loops as normal
-        for i in loop_start + ticks_before_switch_to_static_buffer..20 {
-            out.push(looper.tick((i + 10) as f32));
+        // this grain reads the rolling buffer
+        player.schedule_grain(Grain::new(2, 5.0, 4, fade, false, 1.0));
+
+        // wrong...?
+        let expected_g1 = vec![0.0, 0.0, 2.5, 6.0, 7.0, 4.0];
+
+        // this grain reads both the rolling buffer and then the static buffer
+        player.schedule_grain(Grain::new(8, 5.0, 4, fade, false, 1.0));
+        let expected_g2 = vec![0.0, 0.0, 2.5, 6.0, 7.0, 4.0];
+
+        // this grain reads the static buffer
+        player.schedule_grain(Grain::new(14, 5.0, 4, fade, true, 1.0));
+        let expected_g3 = vec![0.0, 0.0, 4.0, 7.0, 6.0, 2.5];
+
+        let mut input_iter = input.iter();
+
+        let mut out1 = vec![];
+        for _ in expected_g1.iter() {
+            out1.push(player.tick(*input_iter.next().unwrap()));
         }
-        // expect the contents of static buffer to be  the first 4 samples
-        let expected_static = vec![13.0, 12.0, 11.0, 10.0];
-        let static_buffer = looper.static_buffer();
-        for i in 0..4 {
-            assert_eq!(static_buffer.read(i), expected_static[i]);
+
+        assert_eq!(out1, expected_g1);
+
+        let mut out2 = vec![];
+        for _ in expected_g2.iter() {
+            out2.push(player.tick(*input_iter.next().unwrap()));
         }
-        assert_eq!(
-            out,
-            vec![
-                10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0, 12.0, 13.0, 10.0, 11.0,
-                12.0, 13.0, 10.0, 11.0, 12.0, 13.0
-            ]
-        );
+        assert_eq!(out2, expected_g2);
+
+        let mut out3 = vec![];
+        for _ in expected_g3.iter() {
+            out3.push(player.tick(*input_iter.next().unwrap()));
+        }
+        assert_eq!(out3, expected_g3);
     }
-
-    #[test]
-    fn test_grain_looper_switch_to_static_fade() {
-        // like above but with a tricky thing that the fade needs to be appended to the static buffer
-        let mut looper = GrainPlayer::new_with_length(8.0, 8, 2);
-        let mut out = vec![];
-
-        let loop_start = 6;
-        let ticks_before_switch_to_static_buffer = looper.ticks_before_switch_to_static_buffer();
-
-        // fill the rolling buffer with 4 samples
-        for i in 0..loop_start {
-            out.push(looper.tick((i + 10) as f32));
-        }
-        // set fade to two samples
-        // looper.set_fade_time(0.25);
-        // looper.set_loop_offset(0.5);
-        // looper.set_loop_duration(0.5);
-        // looper.start_looping(0.5);
-
-        for i in loop_start..loop_start + ticks_before_switch_to_static_buffer {
-            assert!(!looper.is_using_static_buffer());
-            out.push(looper.tick((i + 10) as f32));
-        }
-        // after looping for the entire loopable region, the static buffer should be full
-        assert!(looper.is_using_static_buffer());
-
-        for i in ticks_before_switch_to_static_buffer
-            ..loop_start + ticks_before_switch_to_static_buffer * 2
-        {
-            out.push(looper.tick((i + 10) as f32));
-        }
-        // expect the contents of static buffer to be the loop, plus 2 samples to fade
-        let expected_static = vec![17.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 0.0, 0.0];
-        let static_buffer = looper.static_buffer();
-        for i in 0..looper.static_buffer().len() {
-            assert_eq!(static_buffer.read(i), expected_static[i]);
-        }
-
-        let mut expected = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 14.0, 13.0];
-        let fade_1 = 14.0 * 2.0 / 3.0 + 10.0 / 3.0;
-        let fade_2 = 15.0 / 3.0 + 11.0 * 2.0 / 3.0;
-        let loop_overlapped = vec![12.0, 13.0, fade_1, fade_2];
-
-        expected.extend(&loop_overlapped);
-        expected.extend(&loop_overlapped);
-        expected.extend(&loop_overlapped);
-        expected.extend(&loop_overlapped);
-        expected.extend(&loop_overlapped);
-        expected.extend(&loop_overlapped);
-
-        all_near(&out, &expected, 0.0001);
-    }
-    */
 }
