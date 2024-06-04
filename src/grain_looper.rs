@@ -94,7 +94,7 @@ impl GrainLooper {
         // wait might go away
         self.grain_player.schedule_grain(Grain::new(
             wait,
-            (self.loop_offset + self.fade_duration) as f32,
+            self.loop_offset as f32,
             duration + self.fade_duration,
             self.fade_duration,
             self.reverse,
@@ -118,22 +118,26 @@ impl GrainLooper {
         // for now we work out the beat time here
         let song_time = self.song_ticks as f32 / self.sample_rate;
         let events = self.loop_scheduler.tick(song_time);
+        println!("events: {:?}", events);
 
         for event in events {
             match event {
                 LoopEvent::StartGrain { duration } => {
-                    print!("start grain");
+                    print!("start grain\n");
                     self.schedule_grain(0, self.beat_time__to_samples(duration));
                     self.is_looping = true;
                 }
                 LoopEvent::StopGrain => {
                     // we stop them all
+                    print!("stop grain\n");
                     self.grain_player.stop_all_grains();
                 }
                 LoopEvent::FadeInDry => {
+                    print!("fade in dry\n");
                     self.dry_ramp.ramp(1.0, self.fade_duration);
                 }
                 LoopEvent::FadeOutDry => {
+                    print!("fade out dry\n");
                     self.dry_ramp.ramp(0.0, self.fade_duration);
                 }
                 _ => {}
@@ -196,9 +200,7 @@ mod tests {
         }
 
         looper.set_fade_time(0.0);
-
-        // set offset to be the loop length to loop the most recent 5 samples
-        looper.set_loop_offset(0.5);
+        looper.set_loop_offset(0.0);
         looper.set_grid(0.5);
         looper.start_looping();
         for i in 5..20 {
@@ -234,7 +236,7 @@ mod tests {
         // two samples fade
         looper.set_fade_time(0.2);
         // set offset to be the loop length to loop the most recent 5 samples
-        looper.set_loop_offset(0.5);
+        looper.set_loop_offset(0.0);
         looper.set_grid(0.5);
         looper.start_looping();
         for _i in 8..15 {
