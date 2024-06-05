@@ -4,11 +4,17 @@ use crate::scheduler::Scheduler;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopEvent {
-    StartGrain { duration: f32 }, // tell the grain player to start a grain
-    StopGrain,                    // stops the grain player
-    FadeOutDry,                   // fade out the dry signal
-    FadeInDry,                    // fade in the dry signal
-    NextLoop,                     // start the next loop, recurs
+    StartGrain {
+        duration: f32,
+    }, // tell the grain player to start a grain
+    StartLegatoGrain {
+        duration: f32,
+        offset_reduction: f32,
+    }, // tell the grain player to start a grain part way thru
+    StopGrain,  // stops the grain player
+    FadeOutDry, // fade out the dry signal
+    FadeInDry,  // fade in the dry signal
+    NextLoop,   // start the next loop, recurs
 }
 pub struct LoopScheduler {
     scheduler: Scheduler<LoopEvent>,
@@ -73,28 +79,22 @@ impl LoopScheduler {
             // if a shorter interval, need to stop the current grain
             self.scheduler
                 .schedule_event(next_new_grid_interval, LoopEvent::StopGrain);
-            self.scheduler
-                .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
-        } else {
-            // if a longer interval, need to be careful because there may not have been enough buffer recorded yet
-            if (next_old_grid_interval - self.time_looping_initiated) < new_interval {
-                // fade back to dry when the shorter loop stops
-                println!("back to dry: {}", next_old_grid_interval);
-                self.scheduler
-                    .schedule_event(next_old_grid_interval, LoopEvent::FadeInDry);
-
-                // then the new loop can start after new interval
-                self.scheduler
-                    .schedule_event(next_new_grid_interval, LoopEvent::FadeOutDry);
-                // schedule new grain
-                self.scheduler
-                    .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
-            } else {
-                // if we have enough buffer, we can just start the new loop when the current loop ends
-                self.scheduler
-                    .schedule_event(next_old_grid_interval, LoopEvent::NextLoop);
+        } else if new_interval > self.grid_interval {
+            if next_new_grid_interval > next_old_grid_interval {
+                // need a grain that will take us to the longer grid interval from the end of the shorter
+                let reduced_grid_interval = next_new_grid_interval - next_old_grid_interval;
+                let how_far_thru = new_interval - reduced_grid_interval;
+                self.scheduler.schedule_event(
+                    next_old_grid_interval,
+                    LoopEvent::StartLegatoGrain {
+                        duration: reduced_grid_interval,
+                        offset_reduction: how_far_thru,
+                    },
+                );
             }
         }
+        self.scheduler
+            .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
         self.grid_interval = new_interval;
     }
 
@@ -282,19 +282,21 @@ mod tests {
         assert_eq!(out225, vec![]);
         scheduler.set_grid_interval(grid2);
 
-        // when the short loop stops, we fade back to dry
+        // when the short loop stops, we get a "legato" grain that takes us to the next interval
+        // we need an extra offset of 3 to make sure we're playing the end of the
+        // legato grain
         let out25 = scheduler.tick(3.0);
-        assert_eq!(out25, vec![LoopEvent::FadeInDry]);
+        assert_eq!(
+            out25,
+            vec![LoopEvent::StartLegatoGrain {
+                duration: 1.0,
+                offset_reduction: 3.0
+            }]
+        );
 
         // then the new loop starts
         let out4 = scheduler.tick(4.0);
-        assert_eq!(
-            out4,
-            vec![
-                LoopEvent::FadeOutDry,
-                LoopEvent::StartGrain { duration: grid2 }
-            ]
-        );
+        assert_eq!(out4, vec![LoopEvent::StartGrain { duration: grid2 }]);
 
         // and continues
         let out5 = scheduler.tick(8.0);

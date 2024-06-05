@@ -9,6 +9,7 @@ use crate::ramped_value::RampedValue;
 // TODO set these to be seconds
 const LOOPABLE_REGION_LENGTH: usize = 100000;
 const MAX_FADE_TIME: usize = 1000;
+const MAX_LOOP_LENGTH: usize = LOOPABLE_REGION_LENGTH / 2;
 
 // uses a grain player to create loops
 // owns two delay lines, one continously being
@@ -56,19 +57,26 @@ pub fn beats_to_samples(beats: f32, tempo: f32, sample_rate: f32) -> usize {
 #[allow(dead_code)]
 impl GrainLooper {
     pub fn new(sample_rate: f32) -> GrainLooper {
-        GrainLooper::new_with_length(sample_rate, LOOPABLE_REGION_LENGTH, MAX_FADE_TIME)
+        GrainLooper::new_with_length(
+            sample_rate,
+            LOOPABLE_REGION_LENGTH,
+            MAX_FADE_TIME,
+            MAX_LOOP_LENGTH,
+        )
     }
 
     fn new_with_length(
         sample_rate: f32,
         loopable_region_length: usize,
         max_fade_time: usize,
+        max_loop_length: usize,
     ) -> GrainLooper {
         GrainLooper {
             grain_player: GrainPlayer::new_with_length(
                 sample_rate,
                 loopable_region_length,
                 max_fade_time,
+                max_loop_length,
             ),
             loop_scheduler: LoopScheduler::new(),
             is_looping: false,
@@ -129,11 +137,15 @@ impl GrainLooper {
         self.grain_player.start_looping();
     }
 
-    fn schedule_grain(&mut self, wait: usize, duration: usize) {
+    fn schedule_grain(&mut self, wait: usize, duration: usize, offset_reduction: f32) {
         // wait might go away
         self.grain_player.schedule_grain(Grain::new(
             wait,
-            beats_to_samples(self.loop_offset_beats, self.tempo, self.sample_rate) as f32,
+            beats_to_samples(
+                self.loop_offset_beats - offset_reduction,
+                self.tempo,
+                self.sample_rate,
+            ) as f32,
             duration + self.fade_duration,
             self.fade_duration,
             self.reverse,
@@ -158,29 +170,41 @@ impl GrainLooper {
         // for now we work out the beat time here
         let song_time = samples_to_beats(self.song_ticks, self.tempo, self.sample_rate);
         let events = self.loop_scheduler.tick(song_time);
-        println!("events: {:?}", events);
 
         for event in events {
             match event {
                 LoopEvent::StartGrain { duration } => {
-                    print!("start grain\n");
+                    print!("EVENT: start grain\n");
                     self.schedule_grain(
                         0,
                         beats_to_samples(duration, self.tempo, self.sample_rate),
+                        0.0,
+                    );
+                    self.is_looping = true;
+                }
+                LoopEvent::StartLegatoGrain {
+                    duration,
+                    offset_reduction,
+                } => {
+                    print!("EVENT: start legato grain\n");
+                    self.schedule_grain(
+                        0,
+                        beats_to_samples(duration, self.tempo, self.sample_rate),
+                        offset_reduction,
                     );
                     self.is_looping = true;
                 }
                 LoopEvent::StopGrain => {
                     // we stop them all
-                    print!("stop grain\n");
+                    print!("EVENT: stop grain\n");
                     self.grain_player.stop_all_grains();
                 }
                 LoopEvent::FadeInDry => {
-                    print!("fade in dry\n");
+                    print!("EVENT: fade in dry\n");
                     self.dry_ramp.ramp(1.0, self.fade_duration);
                 }
                 LoopEvent::FadeOutDry => {
-                    print!("fade out dry\n");
+                    print!("EVENT: fade out dry\n");
                     self.dry_ramp.ramp(0.0, self.fade_duration);
                 }
                 _ => {}
@@ -191,7 +215,7 @@ impl GrainLooper {
         let dry = input;
 
         let looped = self.grain_player.tick(input);
-
+        println!("looped: {}", looped);
         let dry_level = self.dry_ramp.tick();
         looped + dry_level as f32 * dry
     }
@@ -215,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_grain_looper_dry() {
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
+        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
         let mut out = vec![];
         for i in 0..5 {
             out.push(looper.tick(i as f32));
@@ -226,7 +250,7 @@ mod tests {
     #[test]
     fn test_grain_looper_loop() {
         // test a 5 sample loop, no fading, not using static buffer yet
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
+        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
         looper.set_tempo(60.0);
         let mut out = vec![];
         for i in 0..5 {
@@ -261,7 +285,7 @@ mod tests {
     #[test]
     fn test_grain_looper_loop_offset() {
         // check that we can change the offset of the loop as its looping
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
+        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
         looper.set_tempo(60.0);
         let mut out1 = vec![];
         for i in 0..10 {
@@ -300,7 +324,7 @@ mod tests {
     #[test]
     fn test_grain_looper_fade_is_flat() {
         // when we loop a DC signal we expect the fades to maintain the DC level
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 4, 10);
         looper.set_tempo(60.0);
         let mut out = vec![];
         for _i in 0..8 {
@@ -353,7 +377,7 @@ mod tests {
     #[test]
     fn test_grain_looper_fade() {
         // test that a single loop fades into the next loop
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 4, 10);
         looper.set_tempo(60.0);
         let mut out = vec![];
         // two samples fade
@@ -410,7 +434,7 @@ mod tests {
     #[test]
     fn test_grain_looper_tweak_loop() {
         // test that we can change the offset and length of the loop
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 0);
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 0, 10);
         looper.set_tempo(60.0);
         let mut out = vec![];
 
@@ -461,7 +485,7 @@ mod tests {
     #[test]
     fn test_grain_looper_immediate_reverse_without_fade() {
         // test that an immediate reverse with a fade does not try to read into the future
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 0);
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 0, 10);
         looper.set_tempo(60.0);
         let mut out = vec![];
 
@@ -496,7 +520,7 @@ mod tests {
     #[test]
     fn test_grain_looper_short_to_long() {
         // test that if a short loop is changed to a longer loop, it still starts in the same place
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
+        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
         looper.set_tempo(60.0);
         let mut out = vec![];
 
@@ -523,26 +547,19 @@ mod tests {
 
         looper.set_grid(second_len);
 
-        // this means that the loop is 8 samples long but we don't have enough samples to do it yet, so we switch back to dry
-        // we wait till the last loop stops
         for i in loop_change..loop_stop {
             out.push(looper.tick((i + 10) as f32));
         }
 
         let mut expected = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
         let loop_one = vec![14.0, 15.0];
-        // when loop one stops and loop two is yet to start, should resemble end of loop two
-        //grid changes at 10, the next grid interval is at 16
-        // so we get 6 samples of dry signal
-        // TODO but the start of the original loop was at 6 so that's not on the second grid
-        // what should happen?
-        let dry_thru = vec![20.0, 21.0, 22.0, 23.0, 24.0, 25.0];
-        // loop 2 starts in same place as loop 1
+
+        let end_loop_two = vec![16.0, 17.0, 18.0, 19.0, 20.0, 21.0];
         let loop_two = vec![14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0];
 
         expected.extend(&loop_one);
         expected.extend(&loop_one);
-        expected.extend(&dry_thru);
+        expected.extend(&end_loop_two);
         expected.extend(&loop_two);
         expected.extend(&loop_two);
 

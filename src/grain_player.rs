@@ -3,11 +3,6 @@ use crate::{delay_line::DelayLine, stereo_pair::AudioSampleOps};
 
 pub const MAX_GRAINS: usize = 10;
 
-// how much of the buffer we allow to scrub through
-// TODO set these to be seconds
-const LOOPABLE_REGION_LENGTH: usize = 100000;
-const MAX_FADE_TIME: usize = 1000;
-
 pub struct GrainPlayer<T: AudioSampleOps> {
     grains: Vec<Grain>,
     // this is the buffer that is always being written to
@@ -29,19 +24,18 @@ pub struct GrainPlayer<T: AudioSampleOps> {
 //  whilst at the same time new content is instantly available
 #[allow(dead_code)]
 impl<T: AudioSampleOps> GrainPlayer<T> {
-    pub fn new(sample_rate: f32) -> GrainPlayer<T> {
-        GrainPlayer::new_with_length(sample_rate, LOOPABLE_REGION_LENGTH, MAX_FADE_TIME)
-    }
-
     pub fn new_with_length(
         sample_rate: f32,
         loopable_region_length: usize,
         max_fade_time: usize,
+        max_loop_time: usize,
     ) -> GrainPlayer<T> {
-        let delay_line_length_rolling = loopable_region_length * 2 + max_fade_time;
-        let delay_line_length_static = loopable_region_length + max_fade_time;
-        let delay_line_rolling = DelayLine::new(delay_line_length_rolling);
+        //static buffer must have at least the loopable region, with fade and max loop time
+        let delay_line_length_static = loopable_region_length + max_fade_time + max_loop_time;
+        // rolling buffer must be length of loopable region plus the static buffer
+        let delay_line_length_rolling = loopable_region_length + delay_line_length_static;
         let delay_line_static = DelayLine::new(delay_line_length_static);
+        let delay_line_rolling = DelayLine::new(delay_line_length_rolling);
 
         let mut grains_init = vec![];
         for _ in 0..MAX_GRAINS {
@@ -62,7 +56,11 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
 
     pub fn schedule_grain(&mut self, grain: Grain) {
         // replace a finished grain
-        println!("scheduling grain {:?}", grain.offset());
+        println!(
+            "Player: scheduling grain. Offset: {:?} duration: {:?}",
+            grain.offset(),
+            grain.duration()
+        );
         for i in 0..self.grains.len() {
             if self.grains[i].is_finished() {
                 self.grains[i] = grain;
@@ -158,7 +156,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     // things that can't be interpolated or whatnot  might need different impl
 
     fn ticks_before_switch_to_static_buffer(&self) -> usize {
-        self.loopable_region_length + self.fade_allowance
+        self.static_buffer.len()
     }
 
     fn is_filling_static_buffer(&self) -> bool {
@@ -226,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_state() {
-        let mut player = GrainPlayer::new_with_length(sample_rate, 100, 10);
+        let mut player = GrainPlayer::new_with_length(sample_rate, 100, 10, 10);
 
         player.schedule_grain(Grain::new(2, 10.0, 4, 0, false, 1.0));
 
@@ -254,7 +252,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_stop_all() {
-        let mut player = GrainPlayer::new_with_length(sample_rate, 100, 10);
+        let mut player = GrainPlayer::new_with_length(sample_rate, 100, 10, 10);
 
         player.schedule_grain(Grain::new(0, 10.0, 4, 2, false, 1.0));
         player.schedule_grain(Grain::new(0, 10.0, 10, 2, false, 1.0));
@@ -281,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_dry_grain() {
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0);
+        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0, 10);
 
         // if we schedule a grain with an offset of 0 it should just ouput the input
         player.schedule_grain(Grain::new(0, 0.0, 20, 0, false, 1.0));
@@ -302,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_static_buffer_states() {
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0);
+        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 8, 0, 2);
         let p = 10;
         let pre_input: Vec<f32> = (0..p).map(|x| x as f32).collect();
         for input in pre_input.iter() {
@@ -314,7 +312,7 @@ mod tests {
         let mut input_iter = input.iter();
 
         let mut output = vec![];
-        // for first 10 samples (loopable region length) we should be filling the static buffer but not using it
+        // for first 10 samples (loopable region length + max loop) we should be filling the static buffer but not using it
         for i in 0..10 {
             assert!(
                 !player.is_using_static_buffer(),
@@ -324,13 +322,13 @@ mod tests {
             assert!(player.is_filling_static_buffer());
             output.push(player.tick(*input_iter.next().unwrap()));
         }
-        // the static buffer should now be filled with the first 10 samples
+
+        // the static buffer should now be filled with the most recent loopable region
         assert!(!player.is_filling_static_buffer());
-        let expected_static = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let expected_static = vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0];
         let static_buffer = player.static_buffer().buffer().clone();
         assert_eq!(*static_buffer, expected_static);
 
-        // the next ten samples still tick the rolling buffer but not the static one
         for _i in 0..10 {
             assert!(player.is_using_static_buffer());
             assert!(!player.is_filling_static_buffer());
@@ -339,8 +337,8 @@ mod tests {
         // static buffer should still be the same
         assert_eq!(*static_buffer, expected_static);
         // rolling buffer has new stuff in
-        let mut expected_rolling1: Vec<f32> = (10..20).map(|x| (x + 10) as f32).collect();
-        let expected_rolling2: Vec<f32> = (10..20).map(|x| x as f32).collect();
+        let mut expected_rolling1: Vec<f32> = (18..30).map(|x| x as f32).collect();
+        let expected_rolling2: Vec<f32> = (12..18).map(|x| x as f32).collect();
         expected_rolling1.extend(expected_rolling2);
         let rolling_buffer = player.rolling_buffer().buffer().clone();
         assert_eq!(*rolling_buffer, expected_rolling1);
@@ -351,7 +349,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_output() {
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0);
+        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0, 10);
 
         // fill buffer with initial 10 samples
         let n_pre_input = 10;
@@ -404,7 +402,7 @@ mod tests {
     fn test_grain_player_output_fade() {
         // set a max fade time of 2
         // check that it can be used
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 4);
+        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 4, 10);
         let n_pre_input = 10;
         let pre_input: Vec<f32> = (0..n_pre_input).map(|x| x as f32).collect();
         for input in pre_input.iter() {
@@ -457,7 +455,7 @@ mod tests {
     #[test]
     fn test_grain_player_immediate_reverse_with_fade() {
         // test that an immediate reverse with a fade does not try to read into the future
-        let mut player = GrainPlayer::new_with_length(10.0, 50, 4);
+        let mut player = GrainPlayer::new_with_length(10.0, 50, 4, 10);
         let mut out = vec![];
 
         let loop_start_at = 8;
