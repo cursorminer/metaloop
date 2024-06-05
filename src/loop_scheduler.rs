@@ -4,18 +4,18 @@ use crate::scheduler::Scheduler;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopEvent {
-    StartGrain { duration: f32 },
-    StopGrain,
-    FadeOutDry,
-    FadeInDry,
-    StartLoop,
+    StartGrain { duration: f32 }, // tell the grain player to start a grain
+    StopGrain,                    // stops the grain player
+    FadeOutDry,                   // fade out the dry signal
+    FadeInDry,                    // fade in the dry signal
+    NextLoop,                     // start the next loop, recurs
 }
 pub struct LoopScheduler {
     scheduler: Scheduler<LoopEvent>,
     fade_in_time: f32,
     grid_interval: f32,
     current_song_time: f32,
-    time_since_looping_initiated: f32,
+    time_looping_initiated: f32,
     is_looping: bool,
 }
 
@@ -44,7 +44,7 @@ impl LoopScheduler {
             fade_in_time: 0.0,
             grid_interval: 1.0,
             current_song_time: -1.0,
-            time_since_looping_initiated: 0.0,
+            time_looping_initiated: 0.0,
             is_looping: false,
         }
     }
@@ -74,11 +74,12 @@ impl LoopScheduler {
             self.scheduler
                 .schedule_event(next_new_grid_interval, LoopEvent::StopGrain);
             self.scheduler
-                .schedule_event(next_new_grid_interval, LoopEvent::StartLoop);
+                .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
         } else {
             // if a longer interval, need to be careful because there may not have been enough buffer recorded yet
-            if self.time_since_looping_initiated < new_interval {
+            if (next_old_grid_interval - self.time_looping_initiated) < new_interval {
                 // fade back to dry when the shorter loop stops
+                println!("back to dry: {}", next_old_grid_interval);
                 self.scheduler
                     .schedule_event(next_old_grid_interval, LoopEvent::FadeInDry);
 
@@ -87,7 +88,11 @@ impl LoopScheduler {
                     .schedule_event(next_new_grid_interval, LoopEvent::FadeOutDry);
                 // schedule new grain
                 self.scheduler
-                    .schedule_event(next_new_grid_interval, LoopEvent::StartLoop);
+                    .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
+            } else {
+                // if we have enough buffer, we can just start the new loop when the current loop ends
+                self.scheduler
+                    .schedule_event(next_old_grid_interval, LoopEvent::NextLoop);
             }
         }
         self.grid_interval = new_interval;
@@ -96,6 +101,7 @@ impl LoopScheduler {
     pub fn start_looping(&mut self) {
         assert!(!self.is_looping);
         self.is_looping = true;
+        self.time_looping_initiated = self.current_song_time;
         // schedule a fade out
         // schedule a grain to start at the next grid interval
         let next_grid_interval = next_grid_in_beats(
@@ -105,7 +111,7 @@ impl LoopScheduler {
         );
 
         self.scheduler
-            .schedule_event(next_grid_interval, LoopEvent::StartLoop);
+            .schedule_event(next_grid_interval, LoopEvent::NextLoop);
         self.scheduler
             .schedule_event(next_grid_interval, LoopEvent::FadeOutDry);
     }
@@ -138,16 +144,15 @@ impl LoopScheduler {
         let mut returned_events = vec![];
         for event in events {
             match event {
-                LoopEvent::StartLoop => {
+                LoopEvent::NextLoop => {
                     // record when we started the thing
-                    self.time_since_looping_initiated = self.current_song_time;
                     returned_events.push(LoopEvent::StartGrain {
                         duration: self.grid_interval,
                     });
                     // schedule the next loop
                     self.scheduler.schedule_event(
                         self.current_song_time + self.grid_interval,
-                        LoopEvent::StartLoop,
+                        LoopEvent::NextLoop,
                     );
                 }
                 _ => {
@@ -294,5 +299,48 @@ mod tests {
         // and continues
         let out5 = scheduler.tick(8.0);
         assert_eq!(out5, vec![LoopEvent::StartGrain { duration: grid2 }]);
+    }
+
+    #[test]
+    fn test_loop_scheduler_lengthen_loop_late() {
+        // as above but later, so the dry is not needed
+        let mut scheduler = LoopScheduler::new();
+
+        let grid1 = 1.0;
+        let grid2 = 4.0;
+
+        let out0 = scheduler.tick(0.0);
+        assert_eq!(out0, vec![]);
+        scheduler.set_grid_interval(grid1);
+
+        scheduler.start_looping();
+        let out1 = scheduler.tick(1.0);
+        assert_eq!(
+            out1,
+            vec![
+                LoopEvent::StartGrain { duration: grid1 },
+                LoopEvent::FadeOutDry
+            ]
+        );
+
+        let out15 = scheduler.tick(1.5);
+        assert_eq!(out15, vec![]);
+
+        let out2 = scheduler.tick(2.0);
+        assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid1 }]);
+
+        let out3 = scheduler.tick(3.0);
+        assert_eq!(out3, vec![LoopEvent::StartGrain { duration: grid1 }]);
+
+        scheduler.tick(3.8);
+        scheduler.set_grid_interval(grid2);
+
+        // then the new loop starts
+        let out4 = scheduler.tick(4.0);
+        assert_eq!(out4, vec![LoopEvent::StartGrain { duration: grid2 }]);
+
+        // and continues
+        let out8 = scheduler.tick(8.0);
+        assert_eq!(out8, vec![LoopEvent::StartGrain { duration: grid2 }]);
     }
 }

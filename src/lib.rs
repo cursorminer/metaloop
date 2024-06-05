@@ -10,6 +10,7 @@ mod loop_scheduler;
 mod ramped_value;
 mod scheduler;
 mod stereo_pair;
+mod test_utils;
 use grain_looper::GrainLooper;
 
 // This is a shortened version of the gain example with most comments removed, check out

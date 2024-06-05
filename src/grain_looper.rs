@@ -210,24 +210,8 @@ mod tests {
     use std::vec;
 
     use super::*;
+    use crate::test_utils::all_near;
     use approx::assert_abs_diff_eq;
-
-    fn all_near(a: &Vec<f32>, b: &Vec<f32>, epsilon: f32) {
-        if a.len() != b.len() {
-            println!("");
-            println!("left = {:?}\nright = {:?}", a, b);
-            println!("");
-            panic!("lengths differ: {} != {}", a.len(), b.len());
-        }
-        let near = a
-            .iter()
-            .zip(b.iter())
-            .map(|(a, b)| (a - b).abs())
-            .all(|x| x < epsilon);
-        println!("");
-        assert!(near, "left = {:?}\nright = {:?}", a, b);
-        println!("");
-    }
 
     #[test]
     fn test_grain_looper_dry() {
@@ -510,52 +494,15 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_looper_immediate_reverse_with_fade() {
-        // test that an immediate reverse with a fade does not try to read into the future
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
-        looper.set_tempo(60.0);
-        let mut out = vec![];
-
-        let loop_start_at = 8;
-        let stop_at = 18;
-
-        for i in 0..loop_start_at {
-            out.push(looper.tick(i as f32));
-        }
-
-        looper.set_fade_time(0.2);
-        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
-        looper.set_loop_offset(0.4);
-        looper.set_grid(0.4);
-        looper.set_reverse(true);
-        looper.start_looping();
-
-        for i in loop_start_at..stop_at {
-            out.push(looper.tick(i as f32));
-        }
-
-        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
-        let initial_fade = vec![7.666667, 7.0];
-
-        let loop_samples = vec![5.0, 4.0, 4.333333, 4.6666665];
-
-        expected.extend(&initial_fade);
-        expected.extend(&loop_samples);
-        expected.extend(&loop_samples);
-        assert_eq!(out, expected);
-        all_near(&out, &expected, 0.0001);
-    }
-
-    #[test]
     fn test_grain_looper_short_to_long() {
         // test that if a short loop is changed to a longer loop, it still starts in the same place
         let mut looper = GrainLooper::new_with_length(10.0, 20, 0);
         looper.set_tempo(60.0);
         let mut out = vec![];
 
-        let loop_start = 5;
+        let loop_start = 6;
         let loop_change = 10;
-        let loop_stop = 26;
+        let loop_stop = 32;
 
         let first_len = 0.2;
         let second_len = 0.8;
@@ -582,13 +529,17 @@ mod tests {
             out.push(looper.tick((i + 10) as f32));
         }
 
-        let mut expected = vec![10.0, 11.0, 12.0, 13.0, 14.0];
-        let loop_one = vec![13.0, 14.0];
+        let mut expected = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
+        let loop_one = vec![14.0, 15.0];
         // when loop one stops and loop two is yet to start, should resemble end of loop two
-        let dry_thru = vec![17.0, 18.0, 19.0, 20.0];
-        let loop_two = vec![13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0];
+        //grid changes at 10, the next grid interval is at 16
+        // so we get 6 samples of dry signal
+        // TODO but the start of the original loop was at 6 so that's not on the second grid
+        // what should happen?
+        let dry_thru = vec![20.0, 21.0, 22.0, 23.0, 24.0, 25.0];
+        // loop 2 starts in same place as loop 1
+        let loop_two = vec![14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0];
 
-        expected.extend(&loop_one);
         expected.extend(&loop_one);
         expected.extend(&loop_one);
         expected.extend(&dry_thru);

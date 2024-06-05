@@ -71,6 +71,10 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         }
     }
 
+    // the offset of the grain doesn't mean anything unless we have a
+    // reference point to when we started looping.
+    // this is the rolling offset
+    // it kind of sucks
     pub fn start_looping(&mut self) {
         self.is_filling_static_buffer = true;
         self.use_static_buffer = false;
@@ -218,6 +222,7 @@ mod tests {
 
     use super::*;
     const sample_rate: f32 = 10.0;
+    use crate::test_utils::all_near;
 
     #[test]
     fn test_grain_player_state() {
@@ -447,5 +452,36 @@ mod tests {
             out3.push(player.tick(*input_iter.next().unwrap()));
         }
         assert_eq!(out3, expected_g3);
+    }
+
+    #[test]
+    fn test_grain_player_immediate_reverse_with_fade() {
+        // test that an immediate reverse with a fade does not try to read into the future
+        let mut player = GrainPlayer::new_with_length(10.0, 50, 4);
+        let mut out = vec![];
+
+        let loop_start_at = 8;
+        let stop_at = 12;
+
+        for i in 0..loop_start_at {
+            out.push(player.tick(i as f32));
+        }
+
+        player.start_looping();
+        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
+        player.schedule_grain(Grain::new(0, 4.0, 4, 1, true, 1.0));
+
+        for i in loop_start_at..stop_at {
+            out.push(player.tick(i as f32));
+        }
+
+        let mut expected = vec![0.0; 8];
+
+        let grain_samples = vec![3.5, 6.0, 5.0, 2.0];
+
+        expected.extend(&grain_samples);
+
+        assert_eq!(out, expected);
+        all_near(&out, &expected, 0.0001);
     }
 }

@@ -55,7 +55,7 @@
                 "filter": {}
             },
             "args": [
-                "test_grain_looper_loop_offset"
+                "test_grain_player_immediate_reverse_with_fade"
             ],
             "cwd": "${workspaceFolder}"
         }
