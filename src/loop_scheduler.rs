@@ -165,6 +165,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_next_grid_in_beats() {
+        assert_eq!(next_grid_in_beats(0.0, 1.0, 0.0), 0.0);
+    }
+
+    #[test]
     fn test_loop_scheduler_simple_loop() {
         let mut scheduler = LoopScheduler::new();
 
