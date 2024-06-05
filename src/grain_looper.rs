@@ -374,7 +374,7 @@ mod tests {
 
         looper.set_fade_time(0.0);
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
-        looper.set_loop_offset(0.4);
+        looper.set_loop_offset(0.1);
         looper.set_grid(0.4);
         looper.start_looping();
 
@@ -382,7 +382,7 @@ mod tests {
             out.push(looper.tick(i as f32));
         }
         // offset the loop backwards by 2 samples (2,3,4,5)
-        looper.set_loop_offset(0.6);
+        looper.set_loop_offset(0.2);
         // change the length of the loop to be 3 samples (2,3,4)
         looper.set_grid(0.3);
         // reverse the loop (4,3,2)
