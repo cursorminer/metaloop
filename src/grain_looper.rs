@@ -148,9 +148,11 @@ impl GrainLooper {
         let dry = input;
 
         let looped = self.grain_player.tick(input);
+        println!("looped: {}", looped);
 
         let dry_level = self.dry_ramp.tick();
-        looped + dry_level * dry
+        println!("dry_level: {}", dry_level);
+        looped + dry_level as f32 * dry
     }
 
     fn beat_time__to_samples(&self, time: f32) -> usize {
@@ -175,9 +177,20 @@ mod tests {
     use approx::assert_abs_diff_eq;
 
     fn all_near(a: &Vec<f32>, b: &Vec<f32>, epsilon: f32) {
-        for i in 0..a.len() {
-            assert_abs_diff_eq!(a[i], b[i], epsilon = epsilon);
+        if a.len() != b.len() {
+            println!("");
+            println!("left = {:?}\nright = {:?}", a, b);
+            println!("");
+            panic!("lengths differ: {} != {}", a.len(), b.len());
         }
+        let near = a
+            .iter()
+            .zip(b.iter())
+            .map(|(a, b)| (a - b).abs())
+            .all(|x| x < epsilon);
+        println!("");
+        assert!(near, "left = {:?}\nright = {:?}", a, b);
+        println!("");
     }
 
     #[test]
@@ -259,71 +272,90 @@ mod tests {
         assert_eq!(out, vec![1.0, 1.0, 1.0, 1.0, 1.0]);
     }
 
-    #[test]
-    fn test_grain_looper_fade() {
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
-        let mut out = vec![];
-
-        let loop_start = 6;
-        let loop_stop = 12;
-
-        for i in 0..loop_start {
-            out.push(looper.tick(i as f32));
-        }
-        // start looping immediately
-        // two samples fade
-        looper.set_fade_time(0.2);
-        // set offset to be the loop length to loop the most recent 4 samples
-        looper.set_loop_offset(0.4);
-        looper.set_grid(0.4);
-        looper.start_looping();
-
-        for i in loop_start..loop_stop {
-            out.push(looper.tick(i as f32));
-        }
-
-        let first_faded = 6.0 * 2.0 / 3.0;
-        let second_faded = 7.0 / 3.0 + 2.0 / 3.0;
-
-        let one_third = 0.33333334;
-        let two_third = 0.6666667;
-        let loop_grain_contents = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
-        let fades = vec![one_third, two_third, 1.0, 1.0, two_third, one_third];
-        let faded = loop_grain_contents
+    fn overlap_fade(loop_grain_contents: Vec<f32>, fades: Vec<f32>) -> Vec<f32> {
+        let faded_grain = loop_grain_contents
             .iter()
             .zip(fades.iter())
             .map(|(a, b)| a * b)
             .collect::<Vec<f32>>();
         let mut loop_overlapped = vec![];
         for i in 0..4 {
-            let overlapped = faded.get(i + 4).unwrap_or(&0.0);
-            loop_overlapped.push(faded[i] + overlapped);
+            let overlapped = faded_grain.get(i + 4).unwrap_or(&0.0);
+            loop_overlapped.push(faded_grain[i] + overlapped);
         }
         loop_overlapped.rotate_left(2);
+        loop_overlapped
+    }
 
-        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, first_faded, second_faded];
+    #[test]
+    fn test_grain_looper_fade() {
+        // test that a single loop fades into the next loop
+        let mut looper = GrainLooper::new_with_length(10.0, 50, 4);
+        let mut out = vec![];
+
+        let loop_start = 6;
+        let loop_stop = 20;
+
+        let one_third = 0.33333334;
+        let two_third = 0.6666667;
+
+        for i in 0..loop_start {
+            out.push(looper.tick((i + 10) as f32));
+        }
+
+        // two samples fade
+        looper.set_fade_time(0.2);
+
+        // set offset to be the loop length to loop the most recent 4 samples
+        looper.set_loop_offset(0.0);
+        // loop len 4
+        looper.set_grid(0.4);
+
+        let dry_fade_1 = 16.0 * two_third;
+        let dry_fade_2 = 17.0 * one_third;
+
+        let loop_grain_contents = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
+        let fades = vec![one_third, two_third, 1.0, 1.0, two_third, one_third];
+
+        let loop_overlapped = overlap_fade(loop_grain_contents.clone(), fades.clone());
+
+        // println!("loop_overlapped: {:?}", loop_overlapped);
+        // 12.0, 13.0, 12.666668, 12.333334
+
+        let mut expected = vec![
+            10.0,
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            dry_fade_1 + loop_grain_contents[0] * fades[0],
+            dry_fade_2 + loop_grain_contents[1] * fades[1],
+        ];
 
         expected.extend(&loop_overlapped);
         expected.extend(&loop_overlapped);
         expected.extend(&loop_overlapped);
+
+        looper.start_looping();
+
+        for i in loop_start..loop_stop {
+            out.push(looper.tick((i + 10) as f32));
+        }
 
         all_near(&out, &expected, 0.0001);
 
         out.clear();
         looper.stop_looping();
-        for i in 15..20 {
-            out.push(looper.tick(i as f32));
+
+        // expect the loop to finish, and then the dry to fade back in from whatever the loop was doing
+
+        let finish_test = loop_stop + 6;
+        for i in loop_stop..finish_test {
+            out.push(looper.tick((i + 10) as f32));
         }
 
-        // expect the dry to fade back in from whatever the loop was doing
-        let fifth_fade = 15.0 * one_third + 2.0 * two_third;
-        let sixth_fade = 16.0 * two_third + 3.0 * one_third;
-        //assert_eq!(out, vec![fifth_fade, sixth_fade, 17.0, 18.0, 19.0]);
-        all_near(
-            &out,
-            &vec![fifth_fade, sixth_fade, 17.0, 18.0, 19.0],
-            0.0001,
-        );
+        all_near(&out, &vec![12.0, 13.0, 20.0, 27.0, 34.0, 35.0], 0.0001);
     }
 
     #[test]

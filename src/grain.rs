@@ -92,7 +92,7 @@ impl Grain {
         self.elapsed_sample_count = self.elapsed_sample_count + 1;
 
         let win = self.fade_ramp.tick();
-        (return_delay, win)
+        (return_delay, win as f32)
     }
 
     pub fn stop(&mut self) {
