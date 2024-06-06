@@ -235,51 +235,90 @@ mod tests {
 
     use super::*;
     use crate::test_utils::all_near;
-    use approx::assert_abs_diff_eq;
+
+    struct IncreasingInteger {
+        count: usize,
+    }
+
+    impl IncreasingInteger {
+        pub fn new(start_value: usize) -> Self {
+            Self { count: start_value }
+        }
+    }
+
+    impl Iterator for IncreasingInteger {
+        type Item = usize;
+        fn next(&mut self) -> Option<usize> {
+            let out = self.count;
+            self.count += 1;
+            Some(out)
+        }
+    }
+
+    struct GrainLooperFixture {
+        pub looper: GrainLooper,
+        pub input: IncreasingInteger,
+    }
+
+    impl GrainLooperFixture {
+        fn new() -> GrainLooperFixture {
+            let mut f = GrainLooperFixture {
+                looper: GrainLooper::new_with_length(10.0, 20, 4, 10),
+                input: IncreasingInteger::new(10),
+            };
+
+            f.looper.set_tempo(60.0);
+            f
+        }
+
+        fn check_output(&mut self, expected: &Vec<f32>) {
+            let mut out = vec![];
+            for _i in 0..expected.len() {
+                out.push(self.looper.tick(self.input.next().unwrap() as f32));
+            }
+            assert_eq!(out, expected.clone());
+        }
+    }
 
     #[test]
-    fn test_grain_looper_dry() {
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
-        let mut out = vec![];
-        for i in 0..5 {
-            out.push(looper.tick(i as f32));
-        }
-        assert_eq!(out, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+    fn test_grain_looper_nicely() {
+        let mut looper_fixture = GrainLooperFixture::new();
+
+        let expected1 = (10..15).map(|x| x as f32).collect();
+
+        // checks that the tick returns each of expected
+        looper_fixture.check_output(&expected1);
+
+        // can set things on the looper inside the fixture
+        looper_fixture.looper.set_grid(0.5);
+
+        // and check again
+        let expected2 = (15..20).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected2);
     }
 
     #[test]
     fn test_grain_looper_loop() {
         // test a 5 sample loop, no fading, not using static buffer yet
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
-        looper.set_tempo(60.0);
-        let mut out = vec![];
-        for i in 0..5 {
-            out.push(looper.tick((i + 10) as f32));
-        }
+        let mut looper_fixture = GrainLooperFixture::new();
 
-        looper.set_fade_time(0.0);
-        looper.set_loop_offset(0.5);
-        looper.set_grid(0.5);
-        looper.start_looping();
-        for i in 5..20 {
-            out.push(looper.tick((i + 10) as f32));
-        }
-        assert_eq!(
-            out,
-            vec![
-                10.0, 11.0, 12.0, 13.0, 14.0, 10.0, 11.0, 12.0, 13.0, 14.0, 10.0, 11.0, 12.0, 13.0,
-                14.0, 10.0, 11.0, 12.0, 13.0, 14.0
-            ]
-        );
+        let expected1 = (10..15).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
 
-        out.clear();
+        looper_fixture.looper.set_fade_time(0.0);
+        looper_fixture.looper.set_loop_offset(0.5);
+        looper_fixture.looper.set_grid(0.5);
+        looper_fixture.looper.start_looping();
+
+        looper_fixture.check_output(&expected1);
+        looper_fixture.check_output(&expected1);
+        looper_fixture.check_output(&expected1);
+
         // stop looping
-        looper.stop_looping();
-        for i in 15..20 {
-            out.push(looper.tick(i as f32));
-        }
-        // back to dry
-        assert_eq!(out, vec![15.0, 16.0, 17.0, 18.0, 19.0]);
+        looper_fixture.looper.stop_looping();
+
+        let expected_back_to_dry = (30..35).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected_back_to_dry);
     }
 
     #[test]
