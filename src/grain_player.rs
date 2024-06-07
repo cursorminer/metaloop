@@ -25,7 +25,6 @@ pub struct GrainPlayer<T: AudioSampleOps> {
 #[allow(dead_code)]
 impl<T: AudioSampleOps> GrainPlayer<T> {
     pub fn new_with_length(
-        sample_rate: f32,
         loopable_region_length: usize,
         max_fade_time: usize,
         max_loop_time: usize,
@@ -232,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_state() {
-        let mut player = GrainPlayer::new_with_length(sample_rate, 100, 10, 10);
+        let mut player = GrainPlayer::new_with_length(100, 10, 10);
 
         player.schedule_grain(Grain::new(2, 10.0, 4, 0, false, 1.0));
 
@@ -260,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_stop_all() {
-        let mut player = GrainPlayer::new_with_length(sample_rate, 100, 10, 10);
+        let mut player = GrainPlayer::new_with_length(100, 10, 10);
 
         player.schedule_grain(Grain::new(0, 10.0, 4, 2, false, 1.0));
         player.schedule_grain(Grain::new(0, 10.0, 10, 2, false, 1.0));
@@ -287,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_dry_grain() {
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0, 10);
+        let mut player = GrainPlayer::<f32>::new_with_length(10, 0, 10);
 
         // if we schedule a grain with an offset of 0 it should just ouput the input
         player.schedule_grain(Grain::new(0, 0.0, 20, 0, false, 1.0));
@@ -308,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_static_buffer_states() {
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 8, 0, 2);
+        let mut player = GrainPlayer::<f32>::new_with_length(8, 0, 2);
         let p = 10;
         let pre_input: Vec<f32> = (0..p).map(|x| x as f32).collect();
         for input in pre_input.iter() {
@@ -357,7 +356,7 @@ mod tests {
 
     #[test]
     fn test_grain_player_output() {
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 0, 10);
+        let mut player = GrainPlayer::<f32>::new_with_length(10, 0, 10);
 
         // fill buffer with initial 10 samples
         let n_pre_input = 10;
@@ -410,7 +409,7 @@ mod tests {
     fn test_grain_player_output_fade() {
         // set a max fade time of 2
         // check that it can be used
-        let mut player = GrainPlayer::<f32>::new_with_length(sample_rate, 10, 4, 10);
+        let mut player = GrainPlayer::<f32>::new_with_length(10, 4, 10);
         let n_pre_input = 10;
         let pre_input: Vec<f32> = (0..n_pre_input).map(|x| x as f32).collect();
         for input in pre_input.iter() {
@@ -463,7 +462,7 @@ mod tests {
     #[test]
     fn test_grain_player_immediate_reverse_with_fade() {
         // test that an immediate reverse with a fade does not try to read into the future
-        let mut player = GrainPlayer::new_with_length(10.0, 50, 4, 10);
+        let mut player = GrainPlayer::new_with_length(50, 4, 10);
         let mut out = vec![];
 
         let loop_start_at = 8;

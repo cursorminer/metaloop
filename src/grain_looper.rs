@@ -1,4 +1,3 @@
-use crate::delay_line::DelayLine;
 use crate::grain::Grain;
 use crate::grain_player::GrainPlayer;
 use crate::loop_scheduler::LoopEvent;
@@ -73,7 +72,6 @@ impl GrainLooper {
     ) -> GrainLooper {
         GrainLooper {
             grain_player: GrainPlayer::new_with_length(
-                sample_rate,
                 loopable_region_length,
                 max_fade_time,
                 max_loop_length,

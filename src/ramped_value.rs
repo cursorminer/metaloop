@@ -1,5 +1,3 @@
-use crate::delay_line::lerp;
-
 pub struct RampedValue {
     value: f64,
     target_value: f64,
