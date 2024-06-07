@@ -15,7 +15,7 @@ pub struct GrainPlayer<T: AudioSampleOps> {
     rolling_offset: usize,
     use_static_buffer: bool,
     loopable_region_length: usize,
-    fade_allowance: usize,
+    static_buffer_margin: usize,
     is_filling_static_buffer: bool,
 }
 
@@ -49,7 +49,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
             rolling_offset: 0,
             use_static_buffer: false,
             loopable_region_length: loopable_region_length,
-            fade_allowance: max_fade_time,
+            static_buffer_margin: max_fade_time + max_loop_time,
             is_filling_static_buffer: false,
         }
     }
@@ -95,7 +95,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
             out = GrainPlayer::<T>::read_grains(
                 &mut self.grains,
                 &self.static_buffer,
-                self.fade_allowance,
+                self.static_buffer_margin,
             );
         } else {
             out = GrainPlayer::<T>::read_grains(
@@ -481,5 +481,9 @@ mod tests {
 
         assert_eq!(out, expected);
         all_near(&out, &expected, 0.0001);
+    }
+
+    fn test_grain_player_lengthen_grain() {
+        // test the scenario where the grain is lengthened when already using the static buffer
     }
 }
