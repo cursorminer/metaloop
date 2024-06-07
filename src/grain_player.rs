@@ -69,6 +69,14 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.rolling_buffer.reset();
+        self.static_buffer.reset();
+        self.is_filling_static_buffer = false;
+        self.use_static_buffer = false;
+        self.rolling_offset = 0;
+    }
+
     // the offset of the grain doesn't mean anything unless we have a
     // reference point to when we started looping.
     // this is the rolling offset

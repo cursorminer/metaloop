@@ -55,6 +55,11 @@ impl LoopScheduler {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.scheduler.clear();
+        self.is_looping = false;
+    }
+
     // set fade lead time in beats
     pub fn set_fade_lead_in(&mut self, fade_in: f32) {
         // Do nothing

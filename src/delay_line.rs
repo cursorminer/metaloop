@@ -51,6 +51,10 @@ where
 
     pub fn reset(&mut self) {
         self.write_index = 0;
+        // TODO: this is expensive, should rather zero out as we tick.
+        for i in 0..self.buffer.len() {
+            self.buffer[i] = Default::default();
+        }
     }
 
     pub fn tick(&mut self, value: T) {

@@ -31,8 +31,14 @@ struct MetaloopParams {
     #[id = "loop-length"]
     pub loop_length: FloatParam,
 
+    #[id = "loop-offset"]
+    pub loop_offset: FloatParam,
+
     #[id = "loop"]
     pub loop_param: BoolParam,
+
+    #[id = "reverse"]
+    pub reverse_param: BoolParam,
 }
 
 impl Default for Metaloop {
@@ -58,7 +64,19 @@ impl Default for MetaloopParams {
             )
             .with_unit(" s"),
 
+            loop_offset: FloatParam::new(
+                "Length",
+                0.1,
+                FloatRange::Skewed {
+                    min: 0.01,
+                    max: 1.0,
+                    factor: FloatRange::skew_factor(-2.0),
+                },
+            )
+            .with_unit(" s"),
+
             loop_param: BoolParam::new("Loop", false),
+            reverse_param: BoolParam::new("Reverse", false),
         }
     }
 }
@@ -122,6 +140,7 @@ impl Plugin for Metaloop {
     fn reset(&mut self) {
         // Reset buffers and envelopes here. This can be called from the audio thread and may not
         // allocate. You can remove this function if you do not need it.
+        self.grain_looper.reset();
     }
 
     fn process(
@@ -141,6 +160,10 @@ impl Plugin for Metaloop {
             } else if !self.params.loop_param.value() && self.grain_looper.is_looping() {
                 self.grain_looper.stop_looping();
             }
+            self.grain_looper
+                .set_loop_offset(self.params.loop_offset.value());
+            self.grain_looper
+                .set_reverse(self.params.reverse_param.value());
 
             let mut left = true;
             for sample in channel_samples {

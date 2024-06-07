@@ -94,6 +94,14 @@ impl GrainLooper {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.grain_player.reset();
+        self.loop_scheduler.reset();
+        self.is_looping = false;
+        self.song_ticks = 0;
+        self.dry_ramp.set(1.0);
+    }
+
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
         self.update_times();
