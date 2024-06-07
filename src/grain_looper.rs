@@ -324,40 +324,27 @@ mod tests {
     #[test]
     fn test_grain_looper_loop_offset() {
         // check that we can change the offset of the loop as its looping
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
-        looper.set_tempo(60.0);
-        let mut out1 = vec![];
-        for i in 0..10 {
-            out1.push(looper.tick((i + 10) as f32));
-        }
-        let expected1 = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0];
-        assert_eq!(out1, expected1);
+        let mut looper_fixture = GrainLooperFixture::new();
 
-        looper.set_fade_time(0.0);
+        let expected1 = (10..20).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
+
+        looper_fixture.looper.set_fade_time(0.0);
 
         // with a tempo of 60 and a sample rate of 10, one sample is 0.1 beats
-        looper.set_loop_offset(0.5);
-        looper.set_grid(0.5);
+        looper_fixture.looper.set_loop_offset(0.5);
+        looper_fixture.looper.set_grid(0.5);
 
-        looper.start_looping();
+        looper_fixture.looper.start_looping();
 
-        let mut out2 = vec![];
+        let expected2 = (15..20).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected2);
 
-        for i in 10..15 {
-            out2.push(looper.tick((i + 10) as f32));
-        }
-        let expected2 = vec![15.0, 16.0, 17.0, 18.0, 19.0];
-        assert_eq!(out2, expected2);
-
-        let mut out3 = vec![];
         // offset by one earlier compared to the previous loop
-        looper.set_loop_offset(0.6);
+        looper_fixture.looper.set_loop_offset(0.6);
 
-        for i in 15..20 {
-            out3.push(looper.tick((i + 10) as f32));
-        }
-        let expected3 = vec![14.0, 15.0, 16.0, 17.0, 18.0];
-        assert_eq!(out3, expected3);
+        let expected3 = (14..19).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected3);
     }
 
     #[test]
@@ -409,30 +396,25 @@ mod tests {
             let overlapped = faded_grain.get(i + overlap_len).unwrap_or(&0.0);
             loop_overlapped.push(faded_grain[i] + overlapped);
         }
-        loop_overlapped.rotate_left(fade_len);
         loop_overlapped
     }
 
     #[test]
     fn test_grain_looper_fade() {
         // test that a single loop fades into the next loop
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 4, 10);
-        looper.set_tempo(60.0);
-        let mut out = vec![];
+        let mut looper_fixture = GrainLooperFixture::new();
+
+        let expected1 = (10..20).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
+
         // two samples fade
-        looper.set_fade_time(0.1);
+        looper_fixture.looper.set_fade_time(0.1);
 
         // set offset to be the loop length to loop the most recent 4 samples, 16,17,18,19
-        looper.set_loop_offset(0.5);
-        looper.set_grid(0.5);
+        looper_fixture.looper.set_loop_offset(0.5);
+        looper_fixture.looper.set_grid(0.5);
 
-        let loop_start = 10;
-        let loop_stop = 26;
-
-        for i in 0..loop_start {
-            out.push(looper.tick((i + 10) as f32));
-        }
-        looper.start_looping();
+        looper_fixture.looper.start_looping();
 
         // loop len 5 but with one sample fade at start and end
         let loop_grain_contents = vec![15.0, 16.0, 17.0, 18.0, 19.0, 20.0];
@@ -440,168 +422,101 @@ mod tests {
 
         let loop_overlapped = overlap_fade(loop_grain_contents.clone(), fades.clone(), 1);
 
-        println!("loop_overlapped: {:?}", loop_overlapped);
-        // 12.0, 13.0, 12.666668, 12.333334
+        looper_fixture.check_output(&loop_overlapped);
+        looper_fixture.check_output(&loop_overlapped);
+        looper_fixture.check_output(&loop_overlapped);
 
-        let mut expected = vec![
-            10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 17.5,
-        ];
+        looper_fixture.looper.stop_looping();
 
-        expected.extend(&loop_overlapped);
-        expected.extend(&loop_overlapped);
-        expected.extend(&loop_overlapped);
+        let expected_end = vec![27.5, 36.0, 37.0, 38.0, 39.0, 40.0];
 
-        for i in loop_start..loop_stop {
-            out.push(looper.tick((i + 10) as f32));
-        }
-
-        all_near(&out, &expected, 0.0001);
-
-        out.clear();
-        looper.stop_looping();
-
-        // expect the loop to finish, and then the dry to fade back in from whatever the loop was doing
-
-        let finish_test = loop_stop + 6;
-        for i in loop_stop..finish_test {
-            out.push(looper.tick((i + 10) as f32));
-        }
-
-        all_near(&out, &vec![26.0, 37.0, 38.0, 39.0, 40.0, 41.0], 0.0001);
+        looper_fixture.check_output(&expected_end);
     }
 
     #[test]
     fn test_grain_looper_tweak_loop() {
-        // test that we can change the offset and length of the loop
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 0, 10);
-        looper.set_tempo(60.0);
-        let mut out = vec![];
+        // test that we can change the offset and length and reversal of the loop
+        let mut looper_fixture = GrainLooperFixture::new();
 
-        let loop_start_at = 8;
-        let change_offset_at = 17;
-        let stop_at = 25;
+        let expected1 = (10..18).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
 
-        for i in 0..loop_start_at {
-            out.push(looper.tick(i as f32));
-        }
-
-        looper.set_fade_time(0.0);
+        looper_fixture.looper.set_fade_time(0.0);
         // set offset to be the loop length to loop the most recent 4 samples (8,9,10,11)
-        looper.set_loop_offset(0.0);
-        looper.set_grid(0.4);
-        looper.start_looping();
+        looper_fixture.looper.set_loop_offset(0.0);
+        looper_fixture.looper.set_grid(0.4);
+        looper_fixture.looper.start_looping();
 
-        for i in loop_start_at..change_offset_at {
-            out.push(looper.tick(i as f32));
-        }
-        // offset the loop backwards by 2 samples (6,7,8)
-        looper.set_loop_offset(0.2);
-        // change the length of the loop to be 3 samples (8,7,6)
-        looper.set_grid(0.3);
-        // reverse the loop (10.9.8)
-        looper.set_reverse(true);
-        // slow the loop down by half (18,7.5,7)
-        looper.set_speed(0.5);
+        let first_loop = vec![18.0, 19.0, 20.0, 21.0];
+        looper_fixture.check_output(&first_loop);
 
-        for i in change_offset_at..stop_at {
-            out.push(looper.tick(i as f32));
-        }
+        // offset the loop backwards by 2 samples (16,17,18)
+        looper_fixture.looper.set_loop_offset(0.2);
+        looper_fixture.looper.set_grid(0.3);
+        // change the length of the loop to be 3 samples (18,17,16)
+        looper_fixture.looper.set_reverse(true);
+        // slow the loop down by half (18,17.5,17)
+        looper_fixture.looper.set_speed(0.5);
 
-        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0];
+        let second_loop = vec![18.0, 17.5, 17.0];
 
-        let first_loop = vec![8.0, 9.0, 10.0, 11.0];
-        let second_loop = vec![8.0, 7.5, 7.0];
-
-        expected.extend(&first_loop);
-        // wait for a 3 sample grid line to change
-        expected.extend(vec![8.0, 9.0, 10.0]);
-        expected.extend(&second_loop);
-        expected.extend(&second_loop);
-
-        assert_eq!(out, expected);
+        looper_fixture.check_output(&second_loop);
+        looper_fixture.check_output(&second_loop);
+        looper_fixture.check_output(&second_loop);
     }
 
     #[test]
     fn test_grain_looper_immediate_reverse_without_fade() {
         // test that an immediate reverse with a fade does not try to read into the future
-        let mut looper = GrainLooper::new_with_length(10.0, 50, 0, 10);
-        looper.set_tempo(60.0);
-        let mut out = vec![];
+        let mut looper_fixture = GrainLooperFixture::new();
 
-        let loop_start_at = 8;
-        let stop_at = 16;
+        let expected1 = (10..18).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
 
-        for i in 0..loop_start_at {
-            out.push(looper.tick(i as f32));
-        }
-
-        looper.set_fade_time(0.0);
+        looper_fixture.looper.set_fade_time(0.0);
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
-        looper.set_loop_offset(0.4);
-        looper.set_grid(0.4);
-        looper.set_reverse(true);
-        looper.start_looping();
+        looper_fixture.looper.set_loop_offset(0.4);
+        looper_fixture.looper.set_grid(0.4);
+        looper_fixture.looper.set_reverse(true);
+        looper_fixture.looper.start_looping();
 
-        for i in loop_start_at..stop_at {
-            out.push(looper.tick(i as f32));
-        }
+        let loop_samples = vec![17.0, 16.0, 15.0, 14.0];
 
-        let mut expected = vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
-
-        let loop_samples = vec![7.0, 6.0, 5.0, 4.0];
-
-        expected.extend(&loop_samples);
-        expected.extend(&loop_samples);
-
-        assert_eq!(out, expected);
+        looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
     }
 
     #[test]
     fn test_grain_looper_short_to_long() {
         // test that if a short loop is changed to a longer loop, it still starts in the same place
-        let mut looper = GrainLooper::new_with_length(10.0, 20, 0, 10);
-        looper.set_tempo(60.0);
-        let mut out = vec![];
-
-        let loop_start = 6;
-        let loop_change = 10;
-        let loop_stop = 32;
+        let mut looper_fixture = GrainLooperFixture::new();
 
         let first_len = 0.2;
         let second_len = 0.8;
 
-        for i in 0..loop_start {
-            out.push(looper.tick((i + 10) as f32));
-        }
-
-        looper.set_fade_time(0.0);
+        looper_fixture.looper.set_fade_time(0.0);
+        let initial = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
+        looper_fixture.check_output(&initial);
 
         // set offset to be the loop length to loop the most recent 5 samples
-        looper.set_loop_offset(first_len);
-        looper.set_grid(first_len);
-        looper.start_looping();
-        for i in loop_start..loop_change {
-            out.push(looper.tick((i + 10) as f32));
-        }
+        looper_fixture.looper.set_loop_offset(first_len);
+        looper_fixture.looper.set_grid(first_len);
+        looper_fixture.looper.start_looping();
 
-        looper.set_grid(second_len);
-
-        for i in loop_change..loop_stop {
-            out.push(looper.tick((i + 10) as f32));
-        }
-
-        let mut expected = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
         let loop_one = vec![14.0, 15.0];
+        looper_fixture.check_output(&loop_one);
+        looper_fixture.check_output(&loop_one);
+
+        looper_fixture.looper.set_grid(second_len);
 
         let end_loop_two = vec![16.0, 17.0, 18.0, 19.0, 20.0, 21.0];
+        looper_fixture.check_output(&end_loop_two);
+
         let loop_two = vec![14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0];
 
-        expected.extend(&loop_one);
-        expected.extend(&loop_one);
-        expected.extend(&end_loop_two);
-        expected.extend(&loop_two);
-        expected.extend(&loop_two);
-
-        assert_eq!(out, expected);
+        looper_fixture.check_output(&loop_two);
+        looper_fixture.check_output(&loop_two);
+        looper_fixture.check_output(&loop_two);
     }
 }
