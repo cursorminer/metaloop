@@ -27,8 +27,8 @@ impl<
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct StereoPair<T: Float> {
-    left: T,
-    right: T,
+    pub left: T,
+    pub right: T,
 }
 
 #[allow(dead_code)]

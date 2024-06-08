@@ -1,4 +1,4 @@
-use nih_plug::prelude::*;
+use nih_plug::{prelude::*, wrapper::vst3::vst3_sys::vst::LegacyMidiCCOutEvent};
 use std::sync::Arc;
 
 mod countdown_trigger;
@@ -12,6 +12,7 @@ mod scheduler;
 mod stereo_pair;
 mod test_utils;
 use grain_looper::GrainLooper;
+use stereo_pair::StereoPair;
 
 // This is a shortened version of the gain example with most comments removed, check out
 // https://github.com/robbert-vdh/nih-plug/blob/master/plugins/examples/gain/src/lib.rs to get
@@ -154,12 +155,27 @@ impl Plugin for Metaloop {
 
             self.update_params();
 
+            let mut input: StereoPair<f32> = StereoPair::default();
             let mut left = true;
+
+            // todo this is a pain, might be a better way
             for sample in channel_samples {
                 if left {
-                    *sample = self.grain_looper.tick(sample.clone());
+                    input.left = sample.clone();
+                } else {
+                    input.right = sample.clone();
                 }
-                left = false;
+            }
+
+            let out = self.grain_looper.tick(input);
+
+            left = true;
+            for sample in channel_samples {
+                if left {
+                    *sample = out.left();
+                } else {
+                    *sample = out.right();
+                }
             }
         }
 
