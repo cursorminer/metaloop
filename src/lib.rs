@@ -20,7 +20,8 @@ use stereo_pair::StereoPair;
 
 struct Metaloop {
     params: Arc<MetaloopParams>,
-    grain_looper: GrainLooper,
+    grain_looper: GrainLooper<StereoPair<f32>>,
+    output: StereoPair<f32>,
 }
 
 #[derive(Params)]
@@ -47,6 +48,7 @@ impl Default for Metaloop {
         Self {
             params: Arc::new(MetaloopParams::default()),
             grain_looper: GrainLooper::new(44100.0),
+            output: StereoPair::default(),
         }
     }
 }
@@ -158,25 +160,19 @@ impl Plugin for Metaloop {
             let mut input: StereoPair<f32> = StereoPair::default();
             let mut left = true;
 
-            // todo this is a pain, might be a better way
-            for sample in channel_samples {
+            // todo well this is fucking stupid, hopefully be a better way
+            let samples = channel_samples.into_iter();
+            for sample in samples {
                 if left {
                     input.left = sample.clone();
+                    *sample = self.output.left();
                 } else {
                     input.right = sample.clone();
+                    *sample = self.output.right();
                 }
             }
 
-            let out = self.grain_looper.tick(input);
-
-            left = true;
-            for sample in channel_samples {
-                if left {
-                    *sample = out.left();
-                } else {
-                    *sample = out.right();
-                }
-            }
+            self.output = self.grain_looper.tick(input);
         }
 
         ProcessStatus::Normal

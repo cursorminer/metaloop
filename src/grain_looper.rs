@@ -3,6 +3,7 @@ use crate::grain_player::GrainPlayer;
 use crate::loop_scheduler::LoopEvent;
 use crate::loop_scheduler::LoopScheduler;
 use crate::ramped_value::RampedValue;
+use crate::stereo_pair::AudioSampleOps;
 
 // how much of the buffer we allow to scrub through
 // TODO set these to be seconds
@@ -15,8 +16,8 @@ const MAX_LOOP_LENGTH: usize = LOOPABLE_REGION_LENGTH / 2;
 // written to by the input, one that is outputting loop
 // when a new loop is started, the output delay line is
 // copied to the input delay line
-pub struct GrainLooper {
-    grain_player: GrainPlayer<f32>,
+pub struct GrainLooper<T: AudioSampleOps> {
+    grain_player: GrainPlayer<T>,
     loop_scheduler: LoopScheduler,
     is_looping: bool,
     sample_rate: f32,
@@ -54,8 +55,8 @@ pub fn beats_to_samples(beats: f32, tempo: f32, sample_rate: f32) -> f32 {
 // Loops segments of audio, with the ability to scrub through the loop
 // sets loop offset and duration in seconds
 #[allow(dead_code)]
-impl GrainLooper {
-    pub fn new(sample_rate: f32) -> GrainLooper {
+impl<T: AudioSampleOps> GrainLooper<T> {
+    pub fn new(sample_rate: f32) -> GrainLooper<T> {
         GrainLooper::new_with_length(
             sample_rate,
             LOOPABLE_REGION_LENGTH,
@@ -69,7 +70,7 @@ impl GrainLooper {
         loopable_region_length: usize,
         max_fade_time: usize,
         max_loop_length: usize,
-    ) -> GrainLooper {
+    ) -> GrainLooper<T> {
         GrainLooper {
             grain_player: GrainPlayer::new_with_length(
                 loopable_region_length,
@@ -180,7 +181,7 @@ impl GrainLooper {
         self.speed = speed;
     }
 
-    pub fn tick(&mut self, input: f32) -> f32 {
+    pub fn tick(&mut self, input: T) -> T {
         // for now we work out the beat time here
         let song_time = samples_to_beats(self.song_ticks, self.tempo, self.sample_rate);
         let events = self.loop_scheduler.tick(song_time);
@@ -229,9 +230,8 @@ impl GrainLooper {
         let dry = input;
 
         let looped = self.grain_player.tick(input);
-        println!("looped: {}", looped);
         let dry_level = self.dry_ramp.tick();
-        looped + dry_level as f32 * dry
+        looped + dry * dry_level as f32
     }
 
     fn num_playing_grains(&self) -> usize {
@@ -270,7 +270,7 @@ mod tests {
     }
 
     struct GrainLooperFixture {
-        pub looper: GrainLooper,
+        pub looper: GrainLooper<f32>,
         pub input: IncreasingInteger,
     }
 
