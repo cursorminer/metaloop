@@ -152,18 +152,7 @@ impl Plugin for Metaloop {
         for channel_samples in buffer.iter_samples() {
             let _num_samples = channel_samples.len();
 
-            self.grain_looper.set_grid(self.params.loop_length.value());
-
-            if self.params.loop_param.value() && !self.grain_looper.is_looping() {
-                self.grain_looper.set_loop_offset(0.1);
-                self.grain_looper.start_looping();
-            } else if !self.params.loop_param.value() && self.grain_looper.is_looping() {
-                self.grain_looper.stop_looping();
-            }
-            self.grain_looper
-                .set_loop_offset(self.params.loop_offset.value());
-            self.grain_looper
-                .set_reverse(self.params.reverse_param.value());
+            self.update_params();
 
             let mut left = true;
             for sample in channel_samples {
@@ -175,6 +164,23 @@ impl Plugin for Metaloop {
         }
 
         ProcessStatus::Normal
+    }
+}
+
+impl Metaloop {
+    pub fn update_params(&mut self) {
+        self.grain_looper.set_grid(self.params.loop_length.value());
+
+        if self.params.loop_param.value() && !self.grain_looper.is_looping() {
+            self.grain_looper.set_loop_offset(0.1);
+            self.grain_looper.start_looping();
+        } else if !self.params.loop_param.value() && self.grain_looper.is_looping() {
+            self.grain_looper.stop_looping();
+        }
+        self.grain_looper
+            .set_loop_offset(self.params.loop_offset.value());
+        self.grain_looper
+            .set_reverse(self.params.reverse_param.value());
     }
 }
 
