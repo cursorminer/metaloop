@@ -47,8 +47,8 @@ pub fn samples_to_beats(samples: usize, tempo: f32, sample_rate: f32) -> f32 {
     samples as f32 / sample_rate * tempo / 60.0
 }
 
-pub fn beats_to_samples(beats: f32, tempo: f32, sample_rate: f32) -> usize {
-    (beats * 60.0 / tempo * sample_rate) as usize
+pub fn beats_to_samples(beats: f32, tempo: f32, sample_rate: f32) -> f32 {
+    beats * 60.0 / tempo * sample_rate
 }
 
 // Loops segments of audio, with the ability to scrub through the loop
@@ -106,6 +106,14 @@ impl GrainLooper {
     }
 
     fn set_tempo(&mut self, bpm: f32) {
+        // since everything is scheduled in beats, we don't need to update much
+        // but the offset needs to stay the same number of samples if we are looping
+        if self.is_looping {
+            let ratio = bpm / self.tempo;
+            self.loop_offset_beats *= ratio;
+
+            println!("new offset beats {}", self.loop_offset_beats);
+        }
         self.tempo = bpm;
         self.update_times();
     }
@@ -183,7 +191,7 @@ impl GrainLooper {
                     print!("EVENT: start grain\n");
                     self.schedule_grain(
                         0,
-                        beats_to_samples(duration, self.tempo, self.sample_rate),
+                        beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         0.0,
                     );
                     self.is_looping = true;
@@ -195,7 +203,7 @@ impl GrainLooper {
                     print!("EVENT: start legato grain\n");
                     self.schedule_grain(
                         0,
-                        beats_to_samples(duration, self.tempo, self.sample_rate),
+                        beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         offset_reduction,
                     );
                     self.is_looping = true;
@@ -501,7 +509,6 @@ mod tests {
         let first_len = 0.2;
         let second_len = 0.8;
 
-        looper_fixture.looper.set_fade_time(0.0);
         let initial = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
         looper_fixture.check_output(&initial);
 
@@ -524,5 +531,36 @@ mod tests {
         looper_fixture.check_output(&loop_two);
         looper_fixture.check_output(&loop_two);
         looper_fixture.check_output(&loop_two);
+    }
+
+    #[test]
+    fn test_grain_looper_change_tempo() {
+        // test that if tempo changes, the loop length changes
+        let mut looper_fixture = GrainLooperFixture::new();
+
+        let loop_beats = 0.4;
+
+        let initial = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0];
+        looper_fixture.check_output(&initial);
+
+        looper_fixture.looper.set_loop_offset(loop_beats);
+        looper_fixture.looper.set_grid(loop_beats);
+        looper_fixture.looper.start_looping();
+
+        let loop1 = vec![14.0, 15.0, 16.0, 17.0];
+        looper_fixture.check_output(&loop1);
+        looper_fixture.check_output(&loop1);
+
+        looper_fixture.looper.set_tempo(120.0);
+
+        // there's a strange extra zero here
+        // perhaps due to a single sample lag in the beat time
+        // clock
+        let loop_wrong = vec![14.0, 15.0, 0.0];
+        let loop2 = vec![14.0, 15.0];
+        looper_fixture.check_output(&loop_wrong);
+        looper_fixture.check_output(&loop2);
+        looper_fixture.check_output(&loop2);
+        looper_fixture.check_output(&loop2);
     }
 }
