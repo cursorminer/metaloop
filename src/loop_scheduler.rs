@@ -157,6 +157,7 @@ impl LoopScheduler {
         for event in events {
             match event {
                 LoopEvent::NextLoop => {
+                    // TODO don't push to the vec, as it allocates
                     // record when we started the thing
                     returned_events.push(LoopEvent::StartGrain {
                         duration: self.grid_interval,
