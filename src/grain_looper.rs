@@ -107,8 +107,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         if self.is_looping {
             let ratio = bpm / self.tempo;
             self.loop_offset_beats *= ratio;
-
-            println!("new offset beats {}", self.loop_offset_beats);
         }
         self.tempo = bpm;
         self.update_times();
@@ -175,7 +173,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     pub fn tick(&mut self, input: T, beat_time: f64) -> T {
-        println!("beat time {}", beat_time);
         let events = self.loop_scheduler.tick(beat_time as f32);
 
         for event in events {

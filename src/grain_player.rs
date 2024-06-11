@@ -54,12 +54,6 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     }
 
     pub fn schedule_grain(&mut self, grain: Grain) {
-        // replace a finished grain
-        println!(
-            "Player: scheduling grain. Offset: {:?} duration: {:?}",
-            grain.offset(),
-            grain.duration()
-        );
         for i in 0..self.grains.len() {
             if self.grains[i].is_finished() {
                 self.grains[i] = grain;

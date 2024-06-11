@@ -144,7 +144,11 @@ impl LoopScheduler {
     }
 
     pub fn tick(&mut self, beat_time: f32) -> Vec<LoopEvent> {
-        assert!(beat_time > self.current_song_time, "Time must go forward!");
+        if beat_time < self.current_song_time {
+            // we've looped back, now what?
+            self.current_song_time = beat_time;
+            self.time_looping_initiated = beat_time;
+        }
 
         self.current_song_time = beat_time;
 
