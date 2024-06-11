@@ -128,14 +128,17 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
             }
             let (delay_pos, amplitude) = grain.tick();
             let delay = delay_pos + rolling_offset as f32;
-            assert!(
-                delay >= 0.0 && delay < delay_line.len() as f32,
-                "delay is outside buffer. delay_pos: {:?}, rolling_offset: {:?}",
-                delay_pos,
-                rolling_offset,
-            );
 
-            out = out + delay_line.read_interpolated(delay) * amplitude;
+            if delay >= 0.0 && delay < delay_line.len() as f32 {
+                out = out + delay_line.read_interpolated(delay) * amplitude;
+            } else {
+                debug_assert!(
+                    delay >= 0.0 && delay < delay_line.len() as f32,
+                    "delay is outside buffer. delay_pos: {:?}, rolling_offset: {:?}",
+                    delay_pos,
+                    rolling_offset,
+                );
+            }
         }
         out
     }

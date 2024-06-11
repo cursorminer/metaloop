@@ -41,6 +41,9 @@ struct MetaloopParams {
 
     #[id = "reverse"]
     pub reverse_param: BoolParam,
+
+    #[id = "fade"]
+    pub fade: FloatParam,
 }
 
 impl Default for Metaloop {
@@ -67,12 +70,15 @@ impl Default for MetaloopParams {
             )
             .with_unit(" s"),
 
-            loop_offset: FloatParam::new(
-                "Length",
-                0.1,
+            loop_offset: FloatParam::new("Offset", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_unit(" s"),
+
+            fade: FloatParam::new(
+                "Fade",
+                0.02,
                 FloatRange::Skewed {
-                    min: 0.01,
-                    max: 1.0,
+                    min: 0.005,
+                    max: 0.1,
                     factor: FloatRange::skew_factor(-2.0),
                 },
             )
@@ -150,12 +156,18 @@ impl Plugin for Metaloop {
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        self.update_params();
+
+        // set the tempo
+        self.grain_looper
+            .set_tempo(context.transport().tempo.unwrap() as f32);
+
+        let beat_time = context.transport().pos_beats().unwrap();
+
         for channel_samples in buffer.iter_samples() {
             let _num_samples = channel_samples.len();
-
-            self.update_params();
 
             let mut input: StereoPair<f32> = StereoPair::default();
             let mut left = true;
@@ -172,7 +184,7 @@ impl Plugin for Metaloop {
                 }
             }
 
-            self.output = self.grain_looper.tick(input);
+            self.output = self.grain_looper.tick(input, beat_time);
         }
 
         ProcessStatus::Normal
@@ -193,6 +205,8 @@ impl Metaloop {
             .set_loop_offset(self.params.loop_offset.value());
         self.grain_looper
             .set_reverse(self.params.reverse_param.value());
+
+        self.grain_looper.set_fade_time(self.params.fade.value());
     }
 }
 

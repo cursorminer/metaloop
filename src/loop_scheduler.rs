@@ -66,9 +66,9 @@ impl LoopScheduler {
         self.fade_in_time = fade_in;
     }
 
-    pub fn set_grid_interval(&mut self, new_interval: f32) {
-        if new_interval == self.grid_interval || !self.is_looping {
-            self.grid_interval = new_interval;
+    pub fn set_grid_interval(&mut self, new_interval_beats: f32) {
+        if new_interval_beats == self.grid_interval || !self.is_looping {
+            self.grid_interval = new_interval_beats;
             return;
         }
         self.scheduler.clear();
@@ -77,18 +77,21 @@ impl LoopScheduler {
             self.grid_interval,
             self.fade_in_time,
         );
-        let next_new_grid_interval =
-            next_grid_in_beats(self.current_song_time, new_interval, self.fade_in_time);
+        let next_new_grid_interval = next_grid_in_beats(
+            self.current_song_time,
+            new_interval_beats,
+            self.fade_in_time,
+        );
 
-        if new_interval < self.grid_interval {
+        if new_interval_beats < self.grid_interval {
             // if a shorter interval, need to stop the current grain
             self.scheduler
                 .schedule_event(next_new_grid_interval, LoopEvent::StopGrain);
-        } else if new_interval > self.grid_interval {
+        } else if new_interval_beats > self.grid_interval {
             if next_new_grid_interval > next_old_grid_interval {
                 // need a grain that will take us to the longer grid interval from the end of the shorter
                 let reduced_grid_interval = next_new_grid_interval - next_old_grid_interval;
-                let how_far_thru = new_interval - reduced_grid_interval;
+                let how_far_thru = new_interval_beats - reduced_grid_interval;
                 self.scheduler.schedule_event(
                     next_old_grid_interval,
                     LoopEvent::StartLegatoGrain {
@@ -100,7 +103,7 @@ impl LoopScheduler {
         }
         self.scheduler
             .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
-        self.grid_interval = new_interval;
+        self.grid_interval = new_interval_beats;
     }
 
     pub fn start_looping(&mut self) {
