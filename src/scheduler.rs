@@ -6,7 +6,10 @@ pub struct Scheduler<E: Clone + Copy + PartialEq> {
 #[allow(dead_code)]
 impl<E: Clone + Copy + PartialEq> Scheduler<E> {
     pub fn new() -> Scheduler<E> {
-        Scheduler { events: Vec::new() }
+        let empty_reserved = Vec::with_capacity(100);
+        Scheduler {
+            events: empty_reserved,
+        }
     }
 
     pub fn schedule_event(&mut self, time: f32, event: E) {
