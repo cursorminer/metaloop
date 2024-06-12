@@ -1,5 +1,5 @@
 use num_traits::Float;
-use std::ops::{Add, AddAssign, Mul, Sub};
+use std::ops::{Add, AddAssign, Index, Mul, Sub};
 
 // the trait that a sample needs in order to be used as an audio grain
 pub trait AudioSampleOps:
@@ -96,6 +96,18 @@ impl<T: Float + std::ops::AddAssign> AddAssign for StereoPair<T> {
     }
 }
 
+impl<T: Float> Index<usize> for StereoPair<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &T {
+        match index {
+            0 => &self.left,
+            1 => &self.right,
+            _ => panic!("Index out of bounds"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +117,8 @@ mod tests {
         let pair: StereoPair<f32> = StereoPair::new(1.0, 2.0);
         assert_eq!(pair.left, 1.0);
         assert_eq!(pair.right, 2.0);
+        assert_eq!(pair[0], 1.0);
+        assert_eq!(pair[1], 2.0);
 
         assert_eq!(pair * 2.0 + pair, StereoPair::new(3.0, 6.0));
     }

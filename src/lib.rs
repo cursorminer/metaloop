@@ -164,15 +164,16 @@ impl Plugin for Metaloop {
         self.grain_looper
             .set_tempo(context.transport().tempo.unwrap() as f32);
 
+        // todo: beat time only updates once per buffer
         let beat_time = context.transport().pos_beats().unwrap();
 
+        // todo: this is utter bollocks, output will be delayed by one sample
         for channel_samples in buffer.iter_samples() {
             let _num_samples = channel_samples.len();
 
             let mut input: StereoPair<f32> = StereoPair::default();
             let mut left = true;
 
-            // todo well this is fucking stupid, hopefully be a better way
             let samples = channel_samples.into_iter();
             for sample in samples {
                 if left {

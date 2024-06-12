@@ -55,9 +55,15 @@
                 "filter": {}
             },
             "args": [
-                "test_grain_looper_loop"
+                "test_grain_looper_fade"
             ],
             "cwd": "${workspaceFolder}"
-        }
+        },
+        {
+            "type": "lldb",
+            "request": "attach",
+            "name": "Attach to Process",
+            "pid": "${command:pickProcess}"
+        },
     ]
 }

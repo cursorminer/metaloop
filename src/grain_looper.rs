@@ -8,7 +8,7 @@ use crate::stereo_pair::AudioSampleOps;
 // how much of the buffer we allow to scrub through
 // TODO set these to be seconds
 const LOOPABLE_REGION_LENGTH: usize = 100000;
-const MAX_FADE_TIME: usize = 10000;
+const MAX_FADE_TIME_SAMPLES: usize = 10000;
 const MAX_LOOP_LENGTH: usize = LOOPABLE_REGION_LENGTH / 2;
 
 // uses a grain player to create loops
@@ -23,7 +23,7 @@ pub struct GrainLooper<T: AudioSampleOps> {
     sample_rate: f32,
 
     loop_offset_beats: f32,
-    fade_duration: usize,
+    fade_duration_samples: usize,
     dry_ramp: RampedValue,
     reverse: bool,
     speed: f32,
@@ -58,7 +58,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         GrainLooper::new_with_length(
             sample_rate,
             LOOPABLE_REGION_LENGTH,
-            MAX_FADE_TIME,
+            MAX_FADE_TIME_SAMPLES,
             MAX_LOOP_LENGTH,
         )
     }
@@ -80,7 +80,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             sample_rate,
 
             loop_offset_beats: 0.0,
-            fade_duration: 0,
+            fade_duration_samples: 0,
 
             dry_ramp: RampedValue::new(1.0),
             reverse: false,
@@ -98,7 +98,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
 
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
-        self.update_times();
+        self.update_scheduler_fade();
     }
 
     pub fn set_tempo(&mut self, bpm: f32) {
@@ -109,19 +109,21 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             self.loop_offset_beats *= ratio;
         }
         self.tempo = bpm;
-        self.update_times();
+        self.update_scheduler_fade();
     }
 
-    pub fn set_fade_time(&mut self, fade: f32) {
-        let fade_samples = seconds_to_samples(fade, self.sample_rate);
-        debug_assert!(fade_samples <= MAX_FADE_TIME);
+    pub fn set_fade_time(&mut self, fade_beats: f32) {
+        let fade_samples = beats_to_samples(fade_beats, self.tempo, self.sample_rate) as usize;
+        debug_assert!(fade_samples <= MAX_FADE_TIME_SAMPLES);
 
-        self.fade_duration = fade_samples;
+        self.fade_duration_samples = fade_samples.clamp(0, MAX_FADE_TIME_SAMPLES);
+        println!("fade duration samples: {}", self.fade_duration_samples);
+        self.update_scheduler_fade();
     }
 
-    fn update_times(&mut self) {
+    fn update_scheduler_fade(&mut self) {
         self.loop_scheduler.set_fade_lead_in(samples_to_beats(
-            self.fade_duration,
+            self.fade_duration_samples,
             self.tempo,
             self.sample_rate,
         ));
@@ -152,8 +154,8 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                 self.tempo,
                 self.sample_rate,
             ) as f32,
-            duration + self.fade_duration,
-            self.fade_duration,
+            duration + self.fade_duration_samples,
+            self.fade_duration_samples,
             self.reverse,
             self.speed,
         ));
@@ -201,10 +203,10 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                     self.grain_player.stop_all_grains();
                 }
                 LoopEvent::FadeInDry => {
-                    self.dry_ramp.ramp(1.0, self.fade_duration);
+                    self.dry_ramp.ramp(1.0, self.fade_duration_samples);
                 }
                 LoopEvent::FadeOutDry => {
-                    self.dry_ramp.ramp(0.0, self.fade_duration);
+                    self.dry_ramp.ramp(0.0, self.fade_duration_samples);
                 }
                 _ => {}
             }
@@ -292,6 +294,15 @@ mod tests {
             let bps = tempo / 60.0;
             self.beat_time_increment = (bps / self.looper.sample_rate) as f64;
         }
+    }
+
+    #[test]
+    fn test_beats_to_samples() {
+        let tempo = 120.0;
+        let sample_rate = 10.0;
+        assert_eq!(beats_to_samples(1.0, tempo, sample_rate), 5.0);
+        assert_eq!(beats_to_samples(0.5, tempo, sample_rate), 2.5);
+        assert_eq!(beats_to_samples(0.1, 60.0, 10.0), 1.0);
     }
 
     #[test]
