@@ -13,14 +13,20 @@ pub struct GrainPlayer<T: AudioSampleOps> {
 
     // ticks up as the rolling buffer scrolls left
     rolling_offset: usize,
-    use_static_buffer: bool,
+
+    // If we have been looping a long time, we should loop from the static buffer as the original material has gone beyond the rolling buffer
+    read_from_static_buffer: bool,
+
+    // the length of the part of the buffer we can loop over
     loopable_region_length: usize,
+
+    // an extra part of the buffer that allows fade times to extend beyond the loopable region, and the loop to be extended to its max
     static_buffer_margin: usize,
     is_filling_static_buffer: bool,
 }
 
 // schedule and play grains
-// handles the rolling and static buffers so that existing loopable region is frozen when looping for along time,
+// handles the rolling and static buffers so that existing loopable region is frozen when looping for a long time,
 //  whilst at the same time new content is instantly available
 #[allow(dead_code)]
 impl<T: AudioSampleOps> GrainPlayer<T> {
@@ -46,7 +52,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
             rolling_buffer: delay_line_rolling,
             static_buffer: delay_line_static,
             rolling_offset: 0,
-            use_static_buffer: false,
+            read_from_static_buffer: false,
             loopable_region_length: loopable_region_length,
             static_buffer_margin: max_fade_time + max_loop_time,
             is_filling_static_buffer: false,
@@ -67,7 +73,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         self.rolling_buffer.reset();
         self.static_buffer.reset();
         self.is_filling_static_buffer = false;
-        self.use_static_buffer = false;
+        self.read_from_static_buffer = false;
         self.rolling_offset = 0;
     }
 
@@ -77,13 +83,14 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     // it kind of sucks
     pub fn start_looping(&mut self) {
         self.is_filling_static_buffer = true;
-        self.use_static_buffer = false;
+        self.read_from_static_buffer = false;
         self.rolling_offset = 0;
     }
 
     pub fn stop_looping(&mut self) {
         self.is_filling_static_buffer = false;
-        self.use_static_buffer = false;
+        self.read_from_static_buffer = false;
+        self.rolling_offset = 0;
     }
 
     pub fn tick(&mut self, input: T) -> T {
@@ -93,7 +100,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
 
         let out;
 
-        if self.use_static_buffer {
+        if self.read_from_static_buffer {
             out = GrainPlayer::<T>::read_grains(
                 &mut self.grains,
                 &self.static_buffer,
@@ -141,7 +148,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     // that when the loopable region exits the rolling buffer, we can use the static one
     fn tick_static_buffer_copy(&mut self) {
         // don't tick it if its full and we're using it, or if we're not looping
-        if self.use_static_buffer || !self.is_filling_static_buffer {
+        if self.read_from_static_buffer || !self.is_filling_static_buffer {
             return;
         }
         // fill the static buffer with the loop region
@@ -153,7 +160,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         // we switch to the static buffer
         if self.rolling_offset >= self.ticks_before_switch_to_static_buffer() {
             self.is_filling_static_buffer = false;
-            self.use_static_buffer = true;
+            self.read_from_static_buffer = true;
         }
     }
 
@@ -168,8 +175,8 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         self.is_filling_static_buffer
     }
 
-    fn is_using_static_buffer(&self) -> bool {
-        self.use_static_buffer
+    fn is_reading_static_buffer(&self) -> bool {
+        self.read_from_static_buffer
     }
 
     fn static_buffer(&self) -> &DelayLine<T> {
@@ -320,7 +327,7 @@ mod tests {
         // for first 10 samples (loopable region length + max loop) we should be filling the static buffer but not using it
         for i in 0..10 {
             assert!(
-                !player.is_using_static_buffer(),
+                !player.is_reading_static_buffer(),
                 "is using static buffer after {}",
                 i
             );
@@ -335,7 +342,7 @@ mod tests {
         assert_eq!(*static_buffer, expected_static);
 
         for _i in 0..10 {
-            assert!(player.is_using_static_buffer());
+            assert!(player.is_reading_static_buffer());
             assert!(!player.is_filling_static_buffer());
             output.push(player.tick(*input_iter.next().unwrap()));
         }
@@ -490,5 +497,9 @@ mod tests {
 
     fn test_grain_player_lengthen_grain() {
         // test the scenario where the grain is lengthened when already using the static buffer
+    }
+
+    fn test_stop_restart_looping() {
+        // test that we can stop and restart looping
     }
 }
