@@ -529,4 +529,57 @@ mod tests {
     fn test_grain_player_lengthen_grain() {
         // test the scenario where the grain is lengthened when already using the static buffer
     }
+
+    #[test]
+    fn test_grain_start_stop_too_fast() {
+        // this tests the situation where we have a frozen buffer, but we try to start two new looping sessions
+        // within a single fade. This is tricky because the fade out assumes a frozen buffer, and two stop starts
+        //will unfreeze both buffers.
+        let mut player = GrainPlayer::<f32>::new_with_length(20, 5, 5);
+        let n_pre_input = 10;
+        let pre_input: Vec<f32> = (0..n_pre_input).map(|x| x as f32).collect();
+        for input in pre_input.iter() {
+            player.tick(*input);
+        }
+
+        let n_input = n_pre_input + 20 + 6 + 6 + 6;
+        player.start_looping();
+        let input: Vec<f32> = (n_pre_input..n_input).map(|x| (x + 10) as f32).collect();
+        let mut input_iter = input.iter();
+
+        // tick until buffer A is frozen
+        for _ in 0..20 {
+            player.tick(*input_iter.next().unwrap());
+        }
+
+        // once looping all grains with the same offset should output the same thing
+        let fade = 5;
+
+        // this grain reads the rolling buffer
+        player.schedule_grain(Grain::new(6.0, 6, fade, false, 1.0));
+
+        // a build up of multiple fading grains
+        let expected = vec![1.0, 2.5, 15.0, 56.25, 65.0, 62.25, 41.75, 24.75, 6.75];
+        let mut out1 = vec![];
+
+        out1.push(player.tick(*input_iter.next().unwrap()));
+
+        // stop and start will unfreeze A, which has a playing clip on it, but rolling_offset_a will still be valid
+        player.stop_looping();
+        out1.push(player.tick(*input_iter.next().unwrap()));
+        player.start_looping();
+        player.schedule_grain(Grain::new(0.0, 6, fade, false, 1.0));
+
+        // stop and start will unfreeze B, and switch to making new grain on A, which will reset rolling_offset_a
+        player.stop_looping();
+        out1.push(player.tick(*input_iter.next().unwrap()));
+        player.start_looping();
+        player.schedule_grain(Grain::new(20.0, 6, fade, false, 1.0));
+
+        for _ in 0..6 {
+            out1.push(player.tick(*input_iter.next().unwrap()));
+        }
+
+        assert_eq!(out1, expected);
+    }
 }
