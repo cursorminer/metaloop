@@ -117,7 +117,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         debug_assert!(fade_samples <= MAX_FADE_TIME_SAMPLES);
 
         self.fade_duration_samples = fade_samples.clamp(0, MAX_FADE_TIME_SAMPLES);
-        println!("fade duration samples: {}", self.fade_duration_samples);
         self.update_scheduler_fade();
     }
 
@@ -143,6 +142,13 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     pub fn start_looping(&mut self) {
         self.loop_scheduler.start_looping();
         self.grain_player.start_looping();
+        self.is_looping = true;
+    }
+
+    pub fn stop_looping(&mut self) {
+        self.loop_scheduler.stop_looping();
+        self.grain_player.stop_looping();
+        self.is_looping = false;
     }
 
     fn schedule_grain(&mut self, wait: usize, duration: usize, offset_reduction: f32) {
@@ -159,11 +165,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             self.reverse,
             self.speed,
         ));
-    }
-
-    pub fn stop_looping(&mut self) {
-        self.loop_scheduler.stop_looping();
-        self.grain_player.stop_looping();
     }
 
     pub fn set_reverse(&mut self, reverse: bool) {
@@ -257,6 +258,10 @@ mod tests {
 
     // fixture that automatically ticks the input with an increaing integer
     // and provides the relevant beat time
+    // The sample rate is 10
+    // The loopable region is 20
+    // The fade time is 4
+    // The max loop length is 10
     struct GrainLooperFixture {
         pub looper: GrainLooper<f32>,
         pub input: IncreasingInteger,
@@ -574,5 +579,18 @@ mod tests {
         let loop_wrong = vec![0.0, 14.0, 15.0];
         looper_fixture.check_output(&loop_wrong);
         looper_fixture.check_output(&loop2);
+    }
+
+    #[test]
+    fn test_loop_after_full_buffer() {
+        // test that we can loop long after the buffer is full
+        let mut looper_fixture = GrainLooperFixture::new();
+
+        let loop_beats = 0.4;
+
+        let initial = vec![
+            10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0,
+        ];
+        looper_fixture.check_output(&initial);
     }
 }

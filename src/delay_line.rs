@@ -58,11 +58,21 @@ where
     }
 
     pub fn tick(&mut self, value: T) {
+        // assert that write_index is in bounds
+        assert!(self.write_index < self.buffer.len());
+        // clamp the write index to the buffer length
         self.buffer[self.write_index] = value;
         self.write_index = (self.write_index + 1) % self.buffer.len();
     }
 
     pub fn read(&self, delay_samples: usize) -> T {
+        if (delay_samples >= self.buffer.len()) {
+            print!(
+                "delay_samples: {:?}, buffer.len(): {:?}\n",
+                delay_samples,
+                self.buffer.len()
+            );
+        }
         assert!(
             delay_samples < self.buffer.len(),
             "delay was: {:?}",

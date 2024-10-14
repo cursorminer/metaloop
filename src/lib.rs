@@ -183,6 +183,7 @@ impl Plugin for Metaloop {
                     input.right = sample.clone();
                     *sample = self.output.right();
                 }
+                left = false;
             }
 
             self.output = self.grain_looper.tick(input, beat_time);
