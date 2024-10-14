@@ -10,7 +10,7 @@ pub enum LoopEvent {
     StartLegatoGrain {
         duration: f32,
         offset_reduction: f32,
-    }, // tell the grain player to start a grain part way thru
+    }, // tell the grain player to start a grain part way thru, in the case where we want an existing grain to continue
     StopGrain,  // stops the grain player
     FadeOutDry, // fade out the dry signal
     FadeInDry,  // fade in the dry signal

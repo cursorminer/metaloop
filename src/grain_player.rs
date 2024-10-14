@@ -44,7 +44,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
 
         let mut grains_init = vec![];
         for _ in 0..MAX_GRAINS {
-            grains_init.push(Grain::new(0, 0.0, 0, 0, false, 0.0));
+            grains_init.push(Grain::new(0.0, 0, 0, false, 0.0));
         }
 
         GrainPlayer {
@@ -136,10 +136,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
             if grain.is_finished() {
                 continue;
             }
-            if grain.is_waiting() {
-                grain.tick();
-                continue;
-            }
+
             let (delay_pos, amplitude) = grain.tick();
             let delay = delay_pos + rolling_offset as f32;
 
@@ -206,13 +203,6 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         }
     }
 
-    fn num_scheduled_grains(&self) -> usize {
-        self.grains
-            .iter()
-            .filter(|grain| grain.is_waiting())
-            .count()
-    }
-
     pub fn num_playing_grains(&self) -> usize {
         self.grains
             .iter()
@@ -251,18 +241,8 @@ mod tests {
     fn test_grain_player_state() {
         let mut player = GrainPlayer::new_with_length(100, 10, 10);
 
-        player.schedule_grain(Grain::new(2, 10.0, 4, 0, false, 1.0));
+        player.schedule_grain(Grain::new(10.0, 4, 0, false, 1.0));
 
-        assert_eq!(player.num_scheduled_grains(), 1);
-        assert_eq!(player.num_playing_grains(), 0);
-        assert_eq!(player.num_finished_grains(), MAX_GRAINS - 1);
-
-        // tick past wait time
-        for _ in 0..2 {
-            player.tick(0.0);
-        }
-
-        assert_eq!(player.num_scheduled_grains(), 0);
         assert_eq!(player.num_playing_grains(), 1);
         assert_eq!(player.num_finished_grains(), MAX_GRAINS - 1);
 
@@ -270,7 +250,6 @@ mod tests {
         for _ in 0..4 {
             player.tick(0.0);
         }
-        assert_eq!(player.num_scheduled_grains(), 0);
         assert_eq!(player.num_playing_grains(), 0);
         assert_eq!(player.num_finished_grains(), MAX_GRAINS);
     }
@@ -279,8 +258,8 @@ mod tests {
     fn test_grain_player_stop_all() {
         let mut player = GrainPlayer::new_with_length(100, 10, 10);
 
-        player.schedule_grain(Grain::new(0, 10.0, 4, 2, false, 1.0));
-        player.schedule_grain(Grain::new(0, 10.0, 10, 2, false, 1.0));
+        player.schedule_grain(Grain::new(10.0, 4, 2, false, 1.0));
+        player.schedule_grain(Grain::new(10.0, 10, 2, false, 1.0));
 
         assert_eq!(player.num_playing_grains(), 2);
 
@@ -307,7 +286,7 @@ mod tests {
         let mut player = GrainPlayer::<f32>::new_with_length(10, 0, 10);
 
         // if we schedule a grain with an offset of 0 it should just ouput the input
-        player.schedule_grain(Grain::new(0, 0.0, 20, 0, false, 1.0));
+        player.schedule_grain(Grain::new(0.0, 20, 0, false, 1.0));
 
         let num_samples = 10;
 
@@ -388,34 +367,35 @@ mod tests {
         let n_input = n_pre_input + 5 + 6 + 6;
         let input: Vec<f32> = (n_pre_input..n_input).map(|x| x as f32).collect();
 
+        let mut input_iter = input.iter();
+
+        player.tick(*input_iter.next().unwrap());
+        player.tick(*input_iter.next().unwrap());
         // once looping all grains with the same offset should output the same thing
 
         // this grain reads the rolling buffer
-        player.schedule_grain(Grain::new(2, 5.0, 3, 0, false, 1.0));
-        let expected_g1 = vec![0.0, 0.0, 5.0, 6.0, 7.0];
-
-        // this grain reads both the rolling buffer and then the static buffer
-        player.schedule_grain(Grain::new(8, 5.0, 3, 0, false, 1.0));
-        let expected_g2 = vec![0.0, 0.0, 0.0, 5.0, 6.0, 7.0];
-
-        // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
-        player.schedule_grain(Grain::new(14, 5.0, 3, 0, false, 1.0));
-        let expected_g3 = vec![0.0, 0.0, 0.0, 5.0, 6.0, 7.0];
-
-        let mut input_iter = input.iter();
+        player.schedule_grain(Grain::new(5.0, 3, 0, false, 1.0));
+        let expected_g1 = vec![5.0, 6.0, 7.0, 0.0, 0.0, 0.0];
 
         let mut out1 = vec![];
         for _ in expected_g1.iter() {
             out1.push(player.tick(*input_iter.next().unwrap()));
         }
-
         assert_eq!(out1, expected_g1);
+
+        // this grain reads both the rolling buffer and then the static buffer
+        player.schedule_grain(Grain::new(5.0, 3, 0, false, 1.0));
+        let expected_g2 = vec![5.0, 6.0, 7.0, 0.0, 0.0, 0.0];
 
         let mut out2 = vec![];
         for _ in expected_g2.iter() {
             out2.push(player.tick(*input_iter.next().unwrap()));
         }
         assert_eq!(out2, expected_g2);
+
+        // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
+        player.schedule_grain(Grain::new(5.0, 3, 0, false, 1.0));
+        let expected_g3 = vec![5.0, 6.0, 7.0];
 
         let mut out3 = vec![];
         for _ in expected_g3.iter() {
@@ -446,34 +426,34 @@ mod tests {
         // once looping all grains with the same offset should output the same thing
         let fade = 1;
 
+        let mut input_iter = input.iter();
+        // tick twice
+        player.tick(*input_iter.next().unwrap());
+        player.tick(*input_iter.next().unwrap());
+
         // this grain reads the rolling buffer
-        player.schedule_grain(Grain::new(2, 5.0, 4, fade, false, 1.0));
+        player.schedule_grain(Grain::new(5.0, 4, fade, false, 1.0));
 
         // wrong...?
-        let expected_g1 = vec![0.0, 0.0, 2.5, 6.0, 7.0, 4.0];
-
-        // this grain reads both the rolling buffer and then the static buffer
-        player.schedule_grain(Grain::new(8, 5.0, 4, fade, false, 1.0));
-        let expected_g2 = vec![0.0, 0.0, 2.5, 6.0, 7.0, 4.0];
-
-        // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
-        player.schedule_grain(Grain::new(14, 5.0, 4, fade, true, 1.0));
-        let expected_g3 = vec![0.0, 0.0, 4.0, 7.0, 6.0, 2.5];
-
-        let mut input_iter = input.iter();
-
+        let expected_g1 = vec![2.5, 6.0, 7.0, 4.0, 0.0, 0.0];
         let mut out1 = vec![];
         for _ in expected_g1.iter() {
             out1.push(player.tick(*input_iter.next().unwrap()));
         }
-
         assert_eq!(out1, expected_g1);
 
+        // this grain reads both the rolling buffer and then the static buffer
+        player.schedule_grain(Grain::new(5.0, 4, fade, false, 1.0));
+        let expected_g2 = vec![2.5, 6.0, 7.0, 4.0, 0.0, 0.0];
         let mut out2 = vec![];
         for _ in expected_g2.iter() {
             out2.push(player.tick(*input_iter.next().unwrap()));
         }
         assert_eq!(out2, expected_g2);
+
+        // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
+        player.schedule_grain(Grain::new(5.0, 4, fade, true, 1.0));
+        let expected_g3 = vec![4.0, 7.0, 6.0, 2.5];
 
         let mut out3 = vec![];
         for _ in expected_g3.iter() {
@@ -501,7 +481,7 @@ mod tests {
 
         player.start_looping();
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
-        player.schedule_grain(Grain::new(0, 4.0, 4, 1, true, 1.0));
+        player.schedule_grain(Grain::new(4.0, 4, 1, true, 1.0));
 
         for i in loop_start_at..stop_at {
             out.push(player.tick(i as f32));

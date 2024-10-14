@@ -151,10 +151,8 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         self.is_looping = false;
     }
 
-    fn schedule_grain(&mut self, wait: usize, duration: usize, offset_reduction: f32) {
-        // wait might go away
+    fn schedule_grain(&mut self, duration: usize, offset_reduction: f32) {
         self.grain_player.schedule_grain(Grain::new(
-            wait,
             beats_to_samples(
                 self.loop_offset_beats - offset_reduction,
                 self.tempo,
@@ -182,7 +180,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             match event {
                 LoopEvent::StartGrain { duration } => {
                     self.schedule_grain(
-                        0,
                         beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         0.0,
                     );
@@ -193,7 +190,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                     offset_reduction,
                 } => {
                     self.schedule_grain(
-                        0,
                         beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         offset_reduction,
                     );
