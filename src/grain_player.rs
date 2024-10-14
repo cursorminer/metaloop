@@ -78,7 +78,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     }
 
     // the offset of the grain doesn't mean anything unless we have a
-    // reference point to when we started looping.
+    // reference point to when we started looping, as the rolling buffer is constantly moving along
     // this is the rolling offset
     // it kind of sucks
     pub fn start_looping(&mut self) {
@@ -100,23 +100,35 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
 
         let out;
 
+        // TODO looks like we need to decide whether to use the static buffer or not PER GRAIN
+        // because we might have grains that are still playing when we switch back to the rolling one
+        // this also means that we need to keep track of a rolling offset for the static buffer as it will be
+        // being written to when the grain is fading out
+        // when a grain starts it needs to know which buffer its reading from...
         if self.read_from_static_buffer {
             out = GrainPlayer::<T>::read_grains(
                 &mut self.grains,
                 &self.static_buffer,
                 self.static_buffer_margin,
+                self.read_from_static_buffer,
             );
         } else {
             out = GrainPlayer::<T>::read_grains(
                 &mut self.grains,
                 &self.rolling_buffer,
                 self.rolling_offset,
+                self.read_from_static_buffer,
             );
         }
         out
     }
 
-    fn read_grains(grains: &mut Vec<Grain>, delay_line: &DelayLine<T>, rolling_offset: usize) -> T {
+    fn read_grains(
+        grains: &mut Vec<Grain>,
+        delay_line: &DelayLine<T>,
+        rolling_offset: usize,
+        static_buffer: bool,
+    ) -> T {
         let mut out = Default::default();
 
         // accumulate output of all grains
@@ -136,9 +148,10 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
             } else {
                 debug_assert!(
                     delay >= 0.0 && delay < delay_line.len() as f32,
-                    "delay is outside buffer. delay_pos: {:?}, rolling_offset: {:?}",
+                    "delay is outside buffer. delay_pos: {:?}, rolling_offset: {:?}, static_buffer: {:?}",
                     delay_pos,
                     rolling_offset,
+                    static_buffer,
                 );
             }
         }
@@ -348,6 +361,7 @@ mod tests {
         }
         // static buffer should still be the same
         assert_eq!(*static_buffer, expected_static);
+
         // rolling buffer has new stuff in
         let mut expected_rolling1: Vec<f32> = (18..30).map(|x| x as f32).collect();
         let expected_rolling2: Vec<f32> = (12..18).map(|x| x as f32).collect();
@@ -384,7 +398,7 @@ mod tests {
         player.schedule_grain(Grain::new(8, 5.0, 3, 0, false, 1.0));
         let expected_g2 = vec![0.0, 0.0, 0.0, 5.0, 6.0, 7.0];
 
-        // this grain reads the static buffer
+        // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
         player.schedule_grain(Grain::new(14, 5.0, 3, 0, false, 1.0));
         let expected_g3 = vec![0.0, 0.0, 0.0, 5.0, 6.0, 7.0];
 
@@ -405,7 +419,11 @@ mod tests {
 
         let mut out3 = vec![];
         for _ in expected_g3.iter() {
-            out3.push(player.tick(*input_iter.next().unwrap()));
+            let input = *input_iter.next().unwrap();
+            out3.push(player.tick(input));
+            if (input == 25.0) {
+                player.stop_looping();
+            }
         }
         assert_eq!(out3, expected_g3);
     }
@@ -438,7 +456,7 @@ mod tests {
         player.schedule_grain(Grain::new(8, 5.0, 4, fade, false, 1.0));
         let expected_g2 = vec![0.0, 0.0, 2.5, 6.0, 7.0, 4.0];
 
-        // this grain reads the static buffer
+        // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
         player.schedule_grain(Grain::new(14, 5.0, 4, fade, true, 1.0));
         let expected_g3 = vec![0.0, 0.0, 4.0, 7.0, 6.0, 2.5];
 
@@ -459,7 +477,11 @@ mod tests {
 
         let mut out3 = vec![];
         for _ in expected_g3.iter() {
-            out3.push(player.tick(*input_iter.next().unwrap()));
+            let input = *input_iter.next().unwrap();
+            out3.push(player.tick(input));
+            if (input == 17.0) {
+                player.stop_looping();
+            }
         }
         assert_eq!(out3, expected_g3);
     }
@@ -499,7 +521,7 @@ mod tests {
         // test the scenario where the grain is lengthened when already using the static buffer
     }
 
-    fn test_stop_restart_looping() {
-        // test that we can stop and restart looping
+    fn test_switch_back_to_rolling_buffer_with_playing_grain() {
+        // test that we can stop looping during a fade and the grain will continue to play
     }
 }

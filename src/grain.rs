@@ -19,7 +19,7 @@ pub struct Grain {
 #[allow(dead_code)]
 impl Grain {
     // offset: the initial delay time where the grain starts
-    // duration: how long the grain lasts
+    // duration: the duration of the grain in terms of how much buffer to read
     // fade: number of samples to fade in and out (this is within the duration above)
     // speed: how fast to play the grain, 1 is normal, 0.5 is half speed
     pub fn new(
@@ -69,6 +69,8 @@ impl Grain {
     }
 
     /// Tick returns the delay position and the window gain
+    /// The delay position is the position in the delay line where the grain is currently reading, assumes that the delay line is static
+    /// i.e. the delay will go down by one sample each tick so as to read out a stored signal
     pub fn tick(&mut self) -> (f32, f32) {
         if self.is_finished() {
             return (0.0, 0.0);
@@ -87,12 +89,12 @@ impl Grain {
             self.fade_ramp.ramp(0.0, self.fade_duration);
         }
 
-        let return_delay = self.delay_pos;
+        let return_delay_pos = self.delay_pos;
         self.delay_pos = self.delay_pos - self.sample_increment;
         self.elapsed_sample_count = self.elapsed_sample_count + 1;
 
         let win = self.fade_ramp.tick();
-        (return_delay, win as f32)
+        (return_delay_pos, win as f32)
     }
 
     pub fn stop(&mut self) {
