@@ -1,5 +1,13 @@
 use crate::ramped_value::RampedValue;
 
+// This really sucks that the grain needs to know about the buffer
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WhichBuffer {
+    Neither,
+    A,
+    B,
+}
+
 // Q: it would be nice if we could support the cases where fractional delays make sense
 // and when it doesn't
 
@@ -13,6 +21,7 @@ pub struct Grain {
     offset: f32,                 // the initial delay time where the grain starts
     sample_increment: f32,       // how much to increment the delay position each tick
     fade_ramp: RampedValue,      // the fade in/out ramp
+    which_buffer: WhichBuffer,   // which buffer we're reading from
 }
 
 #[allow(dead_code)]
@@ -56,7 +65,16 @@ impl Grain {
             offset: offset,
             sample_increment: sample_increment,
             fade_ramp: RampedValue::new(1.0),
+            which_buffer: WhichBuffer::Neither,
         }
+    }
+
+    pub fn set_which_buffer(&mut self, which_buffer: WhichBuffer) {
+        self.which_buffer = which_buffer;
+    }
+
+    pub fn which_buffer(&self) -> WhichBuffer {
+        self.which_buffer
     }
 
     /// Tick returns the delay position and the window gain

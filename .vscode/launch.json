@@ -55,7 +55,7 @@
                 "filter": {}
             },
             "args": [
-                "test_grain_player_output"
+                "test_grain_player_buffer"
             ],
             "cwd": "${workspaceFolder}"
         },

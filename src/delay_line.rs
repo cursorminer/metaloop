@@ -66,13 +66,6 @@ where
     }
 
     pub fn read(&self, delay_samples: usize) -> T {
-        if (delay_samples >= self.buffer.len()) {
-            print!(
-                "delay_samples: {:?}, buffer.len(): {:?}\n",
-                delay_samples,
-                self.buffer.len()
-            );
-        }
         assert!(
             delay_samples < self.buffer.len(),
             "delay was: {:?}",
