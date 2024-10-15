@@ -12,15 +12,17 @@ impl<E: Clone + Copy + PartialEq> Scheduler<E> {
         }
     }
 
-    pub fn schedule_event(&mut self, time: f32, event: E) {
-        let event_time = self.events.last().map(|&(t, _)| t).unwrap_or(0.0);
-        assert!(
-            time >= event_time,
-            "event must be scheduled in future, event: {}, now: {}",
-            time,
-            event_time,
-        );
-        self.events.push((time, event));
+    pub fn schedule_event(&mut self, new_event_time: f32, event: E) {
+        let previous_event_time = self.events.last().map(|&(t, _)| t).unwrap_or(0.0);
+
+        if new_event_time < previous_event_time {
+            eprintln!(
+                "event must be scheduled after previous event, new_event_time: {}, previous_event_time: {}",
+                new_event_time, previous_event_time,
+            );
+            return;
+        }
+        self.events.push((new_event_time, event));
     }
 
     pub fn tick(&mut self, time: f32) -> Vec<E> {
