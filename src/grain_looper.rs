@@ -287,11 +287,12 @@ mod tests {
         }
 
         fn check_output(&mut self, expected: &Vec<f32>) {
+            let eps = 0.00001; // to ensure we are always triggering events exactly on the beat
             let mut out = vec![];
             for _i in 0..expected.len() {
                 out.push(
                     self.looper
-                        .tick(self.input.next().unwrap() as f32, self.beat_time),
+                        .tick(self.input.next().unwrap() as f32, self.beat_time + eps),
                 );
                 self.beat_time += self.beat_time_increment;
             }
@@ -441,28 +442,30 @@ mod tests {
         let expected1 = (10..20).map(|x| x as f32).collect();
         looper_fixture.check_output(&expected1);
 
-        // two samples fade
+        // no fade
         looper_fixture.looper.set_fade_time(0.1);
 
-        // set offset to be the loop length to loop the most recent 4 samples, 16,17,18,19
         looper_fixture.looper.set_loop_offset(0.5);
         looper_fixture.looper.set_grid(0.5);
 
         looper_fixture.looper.start_looping();
 
-        // loop len 5 but with one sample fade at start and end
-        let loop_grain_contents = vec![15.0, 16.0, 17.0, 18.0, 19.0, 20.0];
-        let fades = vec![0.5, 1.0, 1.0, 1.0, 1.0, 0.5];
+        // last sample will fade from dry to the loop
+        let lead_up = vec![20.0, 21.0, 22.0, 23.0, 21.5];
 
-        let loop_overlapped = overlap_fade(loop_grain_contents.clone(), fades.clone(), 1);
+        looper_fixture.check_output(&lead_up);
 
-        looper_fixture.check_output(&loop_overlapped);
-        looper_fixture.check_output(&loop_overlapped);
-        looper_fixture.check_output(&loop_overlapped);
+        // now fade will interpolate start and end, interpolating between 24 and 19
+        let faded_loop = vec![
+            20.0, 21.0, 22.0, 23.0, 21.5, 20.0, 21.0, 22.0, 23.0, 21.5, 20.0, 21.0, 22.0, 23.0,
+            21.5,
+        ];
+        looper_fixture.check_output(&faded_loop);
 
         looper_fixture.looper.stop_looping();
 
-        let expected_end = vec![27.5, 36.0, 37.0, 38.0, 39.0, 40.0];
+        // when we stop looping, we fade between 24 and 44
+        let expected_end = vec![20.0, 21.0, 22.0, 23.0, 34.0, 45.0];
 
         looper_fixture.check_output(&expected_end);
     }
@@ -497,17 +500,19 @@ mod tests {
         looper_fixture.check_output(&third_loop);
         looper_fixture.check_output(&third_loop);
 
+        looper_fixture.looper.set_speed(0.5);
+        let final_loop = vec![16.0, 16.5, 17.0];
+
+        looper_fixture.check_output(&final_loop);
+        looper_fixture.check_output(&final_loop);
+
+        // currently reverse makes sure it ends on the same
+        // sample as the fwd loop would start on, this might
+        // not be what people want
         looper_fixture.looper.set_reverse(true);
-        let fourth_loop = vec![18.0, 17.0, 16.0];
+        let fourth_loop = vec![18.0, 17.5, 17.0];
         looper_fixture.check_output(&fourth_loop);
         looper_fixture.check_output(&fourth_loop);
-        // // slow the loop down by half (18,17.5,17)
-        // looper_fixture.looper.set_speed(0.5);
-
-        // let final_loop = vec![18.0, 17.5, 17.0];
-
-        // looper_fixture.check_output(&final_loop);
-        // looper_fixture.check_output(&final_loop);
     }
 
     #[test]

@@ -74,11 +74,7 @@ impl LoopScheduler {
             return;
         }
         self.scheduler.clear();
-        let next_old_grid_interval = next_grid_in_beats(
-            self.current_song_time,
-            self.grid_interval,
-            self.fade_in_time,
-        );
+        let next_old_grid_interval = self.next_grid(true);
         let next_new_grid_interval = next_grid_in_beats(
             self.current_song_time,
             new_interval_beats,
@@ -112,11 +108,7 @@ impl LoopScheduler {
         assert!(!self.is_looping);
         self.is_looping = true;
         self.time_looping_initiated = self.current_song_time;
-        let next_grid_interval = next_grid_in_beats(
-            self.current_song_time,
-            self.grid_interval,
-            self.fade_in_time,
-        );
+        let next_grid_interval = self.next_grid(true);
 
         self.scheduler
             .schedule_event(next_grid_interval, LoopEvent::NextLoop);
@@ -129,11 +121,7 @@ impl LoopScheduler {
         assert!(self.is_looping);
         self.is_looping = false;
 
-        let next_grid_interval = next_grid_in_beats(
-            self.current_song_time,
-            self.grid_interval,
-            self.fade_in_time,
-        );
+        let next_grid_interval = self.next_grid(false);
 
         self.scheduler.clear();
 
@@ -152,21 +140,19 @@ impl LoopScheduler {
 
         self.current_song_time = beat_time;
 
-        let events = self.scheduler.tick(beat_time);
+        let new_events = self.scheduler.tick(beat_time);
         let mut returned_events = vec![];
-        for event in events {
+        for event in new_events {
             match event {
                 LoopEvent::NextLoop => {
                     // TODO don't push to the vec, as it allocates
-                    // record when we started the thing
                     returned_events.push(LoopEvent::StartGrain {
                         duration: self.grid_interval,
                     });
                     // schedule the next loop
-                    self.scheduler.schedule_event(
-                        self.current_song_time + self.grid_interval,
-                        LoopEvent::NextLoop,
-                    );
+
+                    self.scheduler
+                        .schedule_event(self.next_grid(false), LoopEvent::NextLoop);
                 }
                 _ => {
                     returned_events.push(event);
@@ -175,6 +161,15 @@ impl LoopScheduler {
         }
 
         returned_events
+    }
+
+    fn next_grid(&self, include_now: bool) -> f32 {
+        let eps = if include_now { 0.0 } else { 0.0001 };
+        return next_grid_in_beats(
+            self.current_song_time + eps,
+            self.grid_interval,
+            self.fade_in_time,
+        );
     }
 }
 
@@ -201,6 +196,43 @@ mod tests {
     #[test]
     fn test_loop_scheduler_simple_loop() {
         let mut scheduler = LoopScheduler::new();
+
+        let grid = 1.0;
+
+        let out0 = scheduler.tick(0.0);
+        assert_eq!(out0, vec![]);
+        scheduler.set_grid_interval(grid);
+
+        scheduler.start_looping();
+        let out1 = scheduler.tick(1.0);
+        assert_eq!(
+            out1,
+            vec![
+                LoopEvent::StartGrain { duration: grid },
+                LoopEvent::FadeOutDry
+            ]
+        );
+
+        let out15 = scheduler.tick(1.5);
+        assert_eq!(out15, vec![]);
+
+        let out2 = scheduler.tick(2.0);
+        assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid }]);
+
+        scheduler.stop_looping();
+        let out2 = scheduler.tick(3.0);
+        assert_eq!(out2, vec![LoopEvent::StopGrain, LoopEvent::FadeInDry]);
+        let out9 = scheduler.tick(9.0);
+        assert_eq!(out9, vec![]);
+    }
+
+    #[test]
+    fn test_loop_scheduler_simple_loop_offset() {
+        let mut scheduler = LoopScheduler::new();
+
+        // a small offset should produce the same result as above
+        let offset = 0.01;
+        scheduler.set_fade_lead_in(0.01);
 
         let grid = 1.0;
 
