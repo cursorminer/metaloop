@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_looper_immediate_reverse_without_fade() {
+    fn test_grain_looper_immediate_offset_reverse_without_fade() {
         // test that an immediate reverse with a fade does not try to read into the future
         let mut looper_fixture = GrainLooperFixture::new();
 
@@ -509,6 +509,51 @@ mod tests {
         let loop_samples = vec![17.0, 16.0, 15.0, 14.0];
 
         looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
+    }
+
+    #[test]
+    fn test_grain_looper_immediate_reverse_without_fade() {
+        // test that an immediate reverse with a fade does not try to read into the future
+        let mut looper_fixture = GrainLooperFixture::new();
+
+        let expected1 = (10..18).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
+
+        looper_fixture.looper.set_fade_time(0.0);
+        // set offset to zero
+        looper_fixture.looper.set_loop_offset(0.0);
+        looper_fixture.looper.set_grid(0.4);
+        looper_fixture.looper.set_reverse(true);
+        looper_fixture.looper.start_looping();
+
+        let loop_samples = vec![17.0, 16.0, 15.0, 14.0];
+
+        looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
+    }
+
+    #[test]
+    fn test_grain_looper_immediate_offset_reverse_with_fade() {
+        // test that an immediate reverse with a fade does not try to read into the future
+        let mut looper_fixture = GrainLooperFixture::new();
+
+        let expected1 = (10..18).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
+
+        looper_fixture.looper.set_fade_time(0.2);
+        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
+        looper_fixture.looper.set_loop_offset(0.4);
+        looper_fixture.looper.set_grid(0.4);
+        looper_fixture.looper.set_reverse(true);
+        looper_fixture.looper.start_looping();
+
+        let start_loop = vec![18.0, 19.0, 19.666668, 19.0];
+        let loop_samples = vec![17.0, 16.0, 16.333334, 16.666668];
+
+        looper_fixture.check_output(&start_loop);
         looper_fixture.check_output(&loop_samples);
         looper_fixture.check_output(&loop_samples);
     }
