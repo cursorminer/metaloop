@@ -27,6 +27,8 @@ pub struct LoopScheduler {
 
 type BeatTime = f32; // might wanna have f64
 
+// for a given song time, find the next grid interval according to the grid interval.
+// The whole grid can be offset so that fades lead up to the grid.
 fn next_grid_in_beats(
     song_time: BeatTime,
     grid_interval: BeatTime,
@@ -110,8 +112,6 @@ impl LoopScheduler {
         assert!(!self.is_looping);
         self.is_looping = true;
         self.time_looping_initiated = self.current_song_time;
-        // schedule a fade out
-        // schedule a grain to start at the next grid interval
         let next_grid_interval = next_grid_in_beats(
             self.current_song_time,
             self.grid_interval,
@@ -120,6 +120,7 @@ impl LoopScheduler {
 
         self.scheduler
             .schedule_event(next_grid_interval, LoopEvent::NextLoop);
+
         self.scheduler
             .schedule_event(next_grid_interval, LoopEvent::FadeOutDry);
     }
@@ -127,8 +128,7 @@ impl LoopScheduler {
     pub fn stop_looping(&mut self) {
         assert!(self.is_looping);
         self.is_looping = false;
-        // schedule a fade in
-        // schedule a grain to stop at the next grid interval
+
         let next_grid_interval = next_grid_in_beats(
             self.current_song_time,
             self.grid_interval,
@@ -145,7 +145,7 @@ impl LoopScheduler {
 
     pub fn tick(&mut self, beat_time: f32) -> Vec<LoopEvent> {
         if beat_time < self.current_song_time {
-            // we've looped back, now what?
+            // we've moved back in time, now what?
             self.current_song_time = beat_time;
             self.time_looping_initiated = beat_time;
         }
@@ -185,6 +185,17 @@ mod tests {
     #[test]
     fn test_next_grid_in_beats() {
         assert_eq!(next_grid_in_beats(0.0, 1.0, 0.0), 0.0);
+
+        assert_eq!(next_grid_in_beats(0.2, 1.0, 0.0), 1.0);
+        assert_eq!(next_grid_in_beats(0.8, 1.0, 0.0), 1.0);
+
+        assert_eq!(next_grid_in_beats(0.2, 1.0, -0.1), 1.1);
+
+        // positive fade time gives an earlier grid
+        assert_eq!(next_grid_in_beats(0.8, 1.0, 0.1), 0.9);
+
+        // quarter beats
+        assert_eq!(next_grid_in_beats(2.2, 0.25, 0.0), 2.25);
     }
 
     #[test]
