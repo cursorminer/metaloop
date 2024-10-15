@@ -64,6 +64,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
 
     pub fn schedule_grain(&mut self, grain: Grain) {
         // todo look at all the params and make sure it will not read beyond the buffer
+        // if the speed is too fast or whatever adjust in some musical way
         for i in 0..self.grains.len() {
             if self.grains[i].is_finished() {
                 self.grains[i] = grain;
