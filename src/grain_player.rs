@@ -62,7 +62,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         }
     }
 
-    pub fn schedule_grain(&mut self, grain: Grain) {
+    pub fn start_grain(&mut self, grain: Grain) {
         // todo look at all the params and make sure it will not read beyond the buffer
         // if the speed is too fast or whatever adjust in some musical way
         for i in 0..self.grains.len() {
@@ -88,7 +88,8 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     // reference point to when we started looping, as the rolling buffer is constantly moving along
     // this is the rolling offset
     // it kind of sucks
-    pub fn start_looping(&mut self) {
+    // the client is responsible for calling this when the first loop grain is started
+    pub fn initiate_looping_reference(&mut self) {
         // reset the rolling offsets on the new grain buffer
         match self.start_grains_buffer {
             WhichBuffer::A => {
@@ -105,7 +106,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         self.is_looping = true;
     }
 
-    pub fn stop_looping(&mut self) {
+    pub fn uninitiate_looping_reference(&mut self) {
         // indicate we should start new grains on the other buffer that was not frozen
         match self.start_grains_buffer {
             WhichBuffer::A => {
@@ -242,6 +243,10 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     pub fn buffer_b(&self) -> &DelayLine<T> {
         &self.buffer_b
     }
+
+    pub fn is_looping(&self) -> bool {
+        self.is_looping
+    }
 }
 
 #[cfg(test)]
@@ -256,7 +261,7 @@ mod tests {
     fn test_grain_player_state() {
         let mut player = GrainPlayer::new_with_length(100, 10, 10);
 
-        player.schedule_grain(Grain::new(10.0, 4, 0, false, 1.0));
+        player.start_grain(Grain::new(10.0, 4, 0, false, 1.0));
 
         assert_eq!(player.num_playing_grains(), 1);
         assert_eq!(player.num_finished_grains(), MAX_GRAINS - 1);
@@ -273,8 +278,8 @@ mod tests {
     fn test_grain_player_stop_all() {
         let mut player = GrainPlayer::new_with_length(100, 10, 10);
 
-        player.schedule_grain(Grain::new(10.0, 4, 2, false, 1.0));
-        player.schedule_grain(Grain::new(10.0, 10, 2, false, 1.0));
+        player.start_grain(Grain::new(10.0, 4, 2, false, 1.0));
+        player.start_grain(Grain::new(10.0, 10, 2, false, 1.0));
 
         assert_eq!(player.num_playing_grains(), 2);
 
@@ -301,7 +306,7 @@ mod tests {
         let mut player = GrainPlayer::<f32>::new_with_length(10, 0, 10);
 
         // if we schedule a grain with an offset of 0 it should just ouput the input
-        player.schedule_grain(Grain::new(0.0, 20, 0, false, 1.0));
+        player.start_grain(Grain::new(0.0, 20, 0, false, 1.0));
 
         let num_samples = 10;
 
@@ -332,7 +337,7 @@ mod tests {
         assert!(player.start_grains_buffer() == WhichBuffer::A);
         assert!(player.frozen_buffer() == WhichBuffer::Neither);
 
-        player.start_looping();
+        player.initiate_looping_reference();
 
         let input: Vec<f32> = (0..20).map(|x| (x + 10) as f32).collect();
         let mut input_iter = input.iter();
@@ -393,7 +398,7 @@ mod tests {
             player.tick(*input);
         }
 
-        player.start_looping();
+        player.initiate_looping_reference();
         let n_input = n_pre_input + 5 + 6 + 6;
         let input: Vec<f32> = (n_pre_input..n_input).map(|x| x as f32).collect();
 
@@ -404,7 +409,7 @@ mod tests {
         // once looping all grains with the same offset should output the same thing
 
         // this grain reads the rolling buffer
-        player.schedule_grain(Grain::new(5.0, 3, 0, false, 1.0));
+        player.start_grain(Grain::new(5.0, 3, 0, false, 1.0));
         let expected_g1 = vec![5.0, 6.0, 7.0, 0.0, 0.0, 0.0];
 
         let mut out1 = vec![];
@@ -414,7 +419,7 @@ mod tests {
         assert_eq!(out1, expected_g1);
 
         // this grain reads both the rolling buffer and then the static buffer
-        player.schedule_grain(Grain::new(5.0, 3, 0, false, 1.0));
+        player.start_grain(Grain::new(5.0, 3, 0, false, 1.0));
         let expected_g2 = vec![5.0, 6.0, 7.0, 0.0, 0.0, 0.0];
 
         let mut out2 = vec![];
@@ -424,7 +429,7 @@ mod tests {
         assert_eq!(out2, expected_g2);
 
         // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
-        player.schedule_grain(Grain::new(5.0, 3, 0, false, 1.0));
+        player.start_grain(Grain::new(5.0, 3, 0, false, 1.0));
         let expected_g3 = vec![5.0, 6.0, 7.0];
 
         let mut out3 = vec![];
@@ -432,7 +437,7 @@ mod tests {
             let input = *input_iter.next().unwrap();
             out3.push(player.tick(input));
             if input == 25.0 {
-                player.stop_looping();
+                player.uninitiate_looping_reference();
             }
         }
         assert_eq!(out3, expected_g3);
@@ -450,7 +455,7 @@ mod tests {
         }
 
         let n_input = n_pre_input + 6 + 6 + 6;
-        player.start_looping();
+        player.initiate_looping_reference();
         let input: Vec<f32> = (n_pre_input..n_input).map(|x| (x + 10) as f32).collect();
 
         // once looping all grains with the same offset should output the same thing
@@ -462,7 +467,7 @@ mod tests {
         player.tick(*input_iter.next().unwrap());
 
         // this grain reads the rolling buffer
-        player.schedule_grain(Grain::new(5.0, 4, fade, false, 1.0));
+        player.start_grain(Grain::new(5.0, 4, fade, false, 1.0));
 
         // wrong...?
         let expected_g1 = vec![2.5, 6.0, 7.0, 4.0, 0.0, 0.0];
@@ -473,7 +478,7 @@ mod tests {
         assert_eq!(out1, expected_g1);
 
         // this grain reads both the rolling buffer and then the static buffer
-        player.schedule_grain(Grain::new(5.0, 4, fade, false, 1.0));
+        player.start_grain(Grain::new(5.0, 4, fade, false, 1.0));
         let expected_g2 = vec![2.5, 6.0, 7.0, 4.0, 0.0, 0.0];
         let mut out2 = vec![];
         for _ in expected_g2.iter() {
@@ -482,7 +487,7 @@ mod tests {
         assert_eq!(out2, expected_g2);
 
         // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
-        player.schedule_grain(Grain::new(5.0, 4, fade, true, 1.0));
+        player.start_grain(Grain::new(5.0, 4, fade, true, 1.0));
         let expected_g3 = vec![4.0, 7.0, 6.0, 2.5];
 
         let mut out3 = vec![];
@@ -490,7 +495,7 @@ mod tests {
             let input = *input_iter.next().unwrap();
             out3.push(player.tick(input));
             if input == 17.0 {
-                player.stop_looping();
+                player.uninitiate_looping_reference();
             }
         }
         assert_eq!(out3, expected_g3);
@@ -509,9 +514,9 @@ mod tests {
             out.push(player.tick(i as f32));
         }
 
-        player.start_looping();
+        player.initiate_looping_reference();
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
-        player.schedule_grain(Grain::new(4.0, 4, 1, true, 1.0));
+        player.start_grain(Grain::new(4.0, 4, 1, true, 1.0));
 
         for i in loop_start_at..stop_at {
             out.push(player.tick(i as f32));
@@ -544,7 +549,7 @@ mod tests {
         }
 
         let n_input = n_pre_input + 20 + 6 + 6 + 6;
-        player.start_looping();
+        player.initiate_looping_reference();
         let input: Vec<f32> = (n_pre_input..n_input).map(|x| (x + 10) as f32).collect();
         let mut input_iter = input.iter();
 
@@ -557,7 +562,7 @@ mod tests {
         let fade = 5;
 
         // this grain reads the rolling buffer
-        player.schedule_grain(Grain::new(6.0, 6, fade, false, 1.0));
+        player.start_grain(Grain::new(6.0, 6, fade, false, 1.0));
 
         // a build up of multiple fading grains
         let expected = vec![1.0, 2.5, 15.0, 56.25, 65.0, 62.25, 41.75, 24.75, 6.75];
@@ -566,16 +571,16 @@ mod tests {
         out1.push(player.tick(*input_iter.next().unwrap()));
 
         // stop and start will unfreeze A, which has a playing clip on it, but rolling_offset_a will still be valid
-        player.stop_looping();
+        player.uninitiate_looping_reference();
         out1.push(player.tick(*input_iter.next().unwrap()));
-        player.start_looping();
-        player.schedule_grain(Grain::new(0.0, 6, fade, false, 1.0));
+        player.initiate_looping_reference();
+        player.start_grain(Grain::new(0.0, 6, fade, false, 1.0));
 
         // stop and start will unfreeze B, and switch to making new grain on A, which will reset rolling_offset_a
-        player.stop_looping();
+        player.uninitiate_looping_reference();
         out1.push(player.tick(*input_iter.next().unwrap()));
-        player.start_looping();
-        player.schedule_grain(Grain::new(20.0, 6, fade, false, 1.0));
+        player.initiate_looping_reference();
+        player.start_grain(Grain::new(20.0, 6, fade, false, 1.0));
 
         for _ in 0..6 {
             out1.push(player.tick(*input_iter.next().unwrap()));
