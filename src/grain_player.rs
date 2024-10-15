@@ -89,14 +89,15 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     // this is the rolling offset
     // it kind of sucks
     // the client is responsible for calling this when the first loop grain is started
-    pub fn initiate_looping_reference(&mut self) {
+    // offset_to_loop_start tells us where in the delay buffer the loop starts
+    pub fn initiate_looping_reference(&mut self, offset_to_loop_start: usize) {
         // reset the rolling offsets on the new grain buffer
         match self.start_grains_buffer {
             WhichBuffer::A => {
-                self.rolling_offset_a = 0;
+                self.rolling_offset_a = offset_to_loop_start;
             }
             WhichBuffer::B => {
-                self.rolling_offset_b = 0;
+                self.rolling_offset_b = offset_to_loop_start;
             }
             WhichBuffer::Neither => {
                 assert!(false);
@@ -337,7 +338,7 @@ mod tests {
         assert!(player.start_grains_buffer() == WhichBuffer::A);
         assert!(player.frozen_buffer() == WhichBuffer::Neither);
 
-        player.initiate_looping_reference();
+        player.initiate_looping_reference(0);
 
         let input: Vec<f32> = (0..20).map(|x| (x + 10) as f32).collect();
         let mut input_iter = input.iter();
@@ -398,7 +399,7 @@ mod tests {
             player.tick(*input);
         }
 
-        player.initiate_looping_reference();
+        player.initiate_looping_reference(0);
         let n_input = n_pre_input + 5 + 6 + 6;
         let input: Vec<f32> = (n_pre_input..n_input).map(|x| x as f32).collect();
 
@@ -455,7 +456,7 @@ mod tests {
         }
 
         let n_input = n_pre_input + 6 + 6 + 6;
-        player.initiate_looping_reference();
+        player.initiate_looping_reference(0);
         let input: Vec<f32> = (n_pre_input..n_input).map(|x| (x + 10) as f32).collect();
 
         // once looping all grains with the same offset should output the same thing
@@ -514,7 +515,7 @@ mod tests {
             out.push(player.tick(i as f32));
         }
 
-        player.initiate_looping_reference();
+        player.initiate_looping_reference(0);
         // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
         player.start_grain(Grain::new(4.0, 4, 1, true, 1.0));
 
@@ -549,7 +550,7 @@ mod tests {
         }
 
         let n_input = n_pre_input + 20 + 6 + 6 + 6;
-        player.initiate_looping_reference();
+        player.initiate_looping_reference(0);
         let input: Vec<f32> = (n_pre_input..n_input).map(|x| (x + 10) as f32).collect();
         let mut input_iter = input.iter();
 
@@ -573,13 +574,13 @@ mod tests {
         // stop and start will unfreeze A, which has a playing clip on it, but rolling_offset_a will still be valid
         player.uninitiate_looping_reference();
         out1.push(player.tick(*input_iter.next().unwrap()));
-        player.initiate_looping_reference();
+        player.initiate_looping_reference(0);
         player.start_grain(Grain::new(0.0, 6, fade, false, 1.0));
 
         // stop and start will unfreeze B, and switch to making new grain on A, which will reset rolling_offset_a
         player.uninitiate_looping_reference();
         out1.push(player.tick(*input_iter.next().unwrap()));
-        player.initiate_looping_reference();
+        player.initiate_looping_reference(0);
         player.start_grain(Grain::new(20.0, 6, fade, false, 1.0));
 
         for _ in 0..6 {

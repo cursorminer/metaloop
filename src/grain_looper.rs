@@ -145,6 +145,14 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     // note that the loop_start_point_seconds is toward the past, as we want to loop something that has already started
     pub fn start_looping(&mut self) {
         self.loop_scheduler.start_looping();
+        let num_samples_to_previous_grid = beats_to_samples(
+            self.loop_scheduler.beats_since_last_grid(),
+            self.tempo,
+            self.sample_rate,
+        ) as usize;
+        println!("num {}", num_samples_to_previous_grid);
+        self.grain_player
+            .initiate_looping_reference(num_samples_to_previous_grid + 1);
         self.is_looping = true;
     }
 
@@ -155,10 +163,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     fn schedule_grain(&mut self, duration: usize, offset_reduction: f32) {
-        if !self.grain_player.is_looping() {
-            self.grain_player.initiate_looping_reference();
-        }
-
         self.grain_player.start_grain(Grain::new(
             beats_to_samples(
                 self.loop_offset_beats - offset_reduction,
@@ -341,7 +345,7 @@ mod tests {
         looper_fixture.check_output(&expected1);
 
         looper_fixture.looper.set_fade_time(0.0);
-        looper_fixture.looper.set_loop_offset(0.5);
+        looper_fixture.looper.set_loop_offset(0.0);
         looper_fixture.looper.set_grid(0.5);
         looper_fixture.looper.start_looping();
 
@@ -372,13 +376,13 @@ mod tests {
 
         looper_fixture.looper.start_looping();
 
-        let expected2 = (15..20).map(|x| x as f32).collect();
+        let expected2 = (10..15).map(|x| x as f32).collect();
         looper_fixture.check_output(&expected2);
 
         // offset by one earlier compared to the previous loop
-        looper_fixture.looper.set_loop_offset(0.6);
+        looper_fixture.looper.set_loop_offset(0.4);
 
-        let expected3 = (14..19).map(|x| x as f32).collect();
+        let expected3 = (11..16).map(|x| x as f32).collect();
         looper_fixture.check_output(&expected3);
     }
 
@@ -394,8 +398,8 @@ mod tests {
         // start looping immediately
         // two samples fade
         looper.set_fade_time(0.2);
-        // set offset to be the loop length to loop the most recent 5 samples
-        looper.set_loop_offset(0.5);
+
+        looper.set_loop_offset(0.0);
         looper.set_grid(0.5);
         looper.start_looping();
         for i in 8..15 {
@@ -445,7 +449,7 @@ mod tests {
         // no fade
         looper_fixture.looper.set_fade_time(0.1);
 
-        looper_fixture.looper.set_loop_offset(0.5);
+        looper_fixture.looper.set_loop_offset(0.0);
         looper_fixture.looper.set_grid(0.5);
 
         looper_fixture.looper.start_looping();
@@ -475,7 +479,7 @@ mod tests {
         // test that we can change the offset and length and reversal of the loop
         let mut looper_fixture = GrainLooperFixture::new();
 
-        let expected1 = (10..18).map(|x| x as f32).collect();
+        let expected1 = (10..22).map(|x| x as f32).collect();
         looper_fixture.check_output(&expected1);
 
         looper_fixture.looper.set_fade_time(0.0);
@@ -516,30 +520,9 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_looper_immediate_offset_reverse_without_fade() {
-        // test that an immediate reverse with a fade does not try to read into the future
-        let mut looper_fixture = GrainLooperFixture::new();
-
-        let expected1 = (10..18).map(|x| x as f32).collect();
-        looper_fixture.check_output(&expected1);
-
-        looper_fixture.looper.set_fade_time(0.0);
-        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
-        looper_fixture.looper.set_loop_offset(0.4);
-        looper_fixture.looper.set_grid(0.4);
-        looper_fixture.looper.set_reverse(true);
-        looper_fixture.looper.start_looping();
-
-        let loop_samples = vec![17.0, 16.0, 15.0, 14.0];
-
-        looper_fixture.check_output(&loop_samples);
-        looper_fixture.check_output(&loop_samples);
-        looper_fixture.check_output(&loop_samples);
-    }
-
-    #[test]
-    fn test_grain_looper_immediate_reverse_without_fade() {
-        // test that an immediate reverse with a fade does not try to read into the future
+    fn test_grain_looper_immediate_reverse() {
+        // in this case, we need to add a special offset to avoid
+        // reading into the future
         let mut looper_fixture = GrainLooperFixture::new();
 
         let expected1 = (10..18).map(|x| x as f32).collect();
@@ -560,6 +543,28 @@ mod tests {
     }
 
     #[test]
+    fn test_grain_looper_immediate_offset_reverse() {
+        // in this case, the offset should make a reverse loop perfectly possible
+        let mut looper_fixture = GrainLooperFixture::new();
+
+        let expected1 = (10..18).map(|x| x as f32).collect();
+        looper_fixture.check_output(&expected1);
+
+        looper_fixture.looper.set_fade_time(0.0);
+        // set offset to be the loop length to loop the most recent 4 samples (14,15,16,17)
+        looper_fixture.looper.set_loop_offset(0.4);
+        looper_fixture.looper.set_grid(0.4);
+        looper_fixture.looper.set_reverse(true);
+        looper_fixture.looper.start_looping();
+
+        let loop_samples = vec![17.0, 16.0, 15.0, 14.0];
+
+        looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
+        looper_fixture.check_output(&loop_samples);
+    }
+
+    #[test]
     fn test_grain_looper_immediate_offset_reverse_with_fade() {
         // test that an immediate reverse with a fade does not try to read into the future
         let mut looper_fixture = GrainLooperFixture::new();
@@ -568,7 +573,6 @@ mod tests {
         looper_fixture.check_output(&expected1);
 
         looper_fixture.looper.set_fade_time(0.2);
-        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
         looper_fixture.looper.set_loop_offset(0.4);
         looper_fixture.looper.set_grid(0.4);
         looper_fixture.looper.set_reverse(true);

@@ -1,6 +1,6 @@
 // This handles the actual events that control what the looper does
 // according to the beat time
-use crate::scheduler::Scheduler;
+use crate::{grain_looper::beats_to_samples, scheduler::Scheduler};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopEvent {
@@ -104,6 +104,7 @@ impl LoopScheduler {
         self.grid_interval = new_interval_beats;
     }
 
+    // start looping, and return how far we are through the current grid interval
     pub fn start_looping(&mut self) {
         assert!(!self.is_looping);
         self.is_looping = true;
@@ -115,6 +116,15 @@ impl LoopScheduler {
 
         self.scheduler
             .schedule_event(next_grid_interval, LoopEvent::FadeOutDry);
+    }
+
+    pub fn beats_since_last_grid(&self) -> f32 {
+        let previous_grid_interval = previous_grid_in_beats(
+            self.current_song_time,
+            self.grid_interval,
+            self.fade_in_time,
+        );
+        self.current_song_time - previous_grid_interval
     }
 
     pub fn stop_looping(&mut self) {
@@ -191,6 +201,22 @@ mod tests {
 
         // quarter beats
         assert_eq!(next_grid_in_beats(2.2, 0.25, 0.0), 2.25);
+    }
+
+    #[test]
+    fn test_previous_grid_in_beats() {
+        assert_eq!(previous_grid_in_beats(0.0, 1.0, 0.0), 0.0);
+
+        assert_eq!(previous_grid_in_beats(0.2, 1.0, 0.0), 0.0);
+        assert_eq!(previous_grid_in_beats(0.8, 1.0, 0.0), 0.0);
+
+        assert_eq!(previous_grid_in_beats(0.2, 1.0, -0.1), 0.1);
+
+        // positive fade time gives an earlier grid
+        assert_eq!(previous_grid_in_beats(1.8, 1.0, 0.1), 0.9);
+
+        // quarter beats
+        assert_eq!(previous_grid_in_beats(3.3, 0.25, 0.0), 3.25);
     }
 
     #[test]
