@@ -44,6 +44,9 @@ struct MetaloopParams {
 
     #[id = "fade"]
     pub fade: FloatParam,
+
+    #[id = "speed"]
+    pub speed: FloatParam,
 }
 
 impl Default for Metaloop {
@@ -65,7 +68,7 @@ impl Default for MetaloopParams {
                 FloatRange::Skewed {
                     min: 0.01,
                     max: 1.0,
-                    factor: FloatRange::skew_factor(-2.0),
+                    factor: FloatRange::skew_factor(-1.0),
                 },
             )
             .with_unit(" s"),
@@ -79,10 +82,21 @@ impl Default for MetaloopParams {
                 FloatRange::Skewed {
                     min: 0.005,
                     max: 0.1,
-                    factor: FloatRange::skew_factor(-2.0),
+                    factor: FloatRange::skew_factor(-1.0),
                 },
             )
             .with_unit(" s"),
+
+            speed: FloatParam::new(
+                "Speed",
+                100.0,
+                FloatRange::Skewed {
+                    min: 10.0,
+                    max: 200.0,
+                    factor: FloatRange::skew_factor(-1.0),
+                },
+            )
+            .with_unit(" %"),
 
             loop_param: BoolParam::new("Loop", false),
             reverse_param: BoolParam::new("Reverse", false),
@@ -209,6 +223,8 @@ impl Metaloop {
             .set_reverse(self.params.reverse_param.value());
 
         self.grain_looper.set_fade_time(self.params.fade.value());
+        self.grain_looper
+            .set_speed(self.params.speed.value() / 100.0);
     }
 }
 
