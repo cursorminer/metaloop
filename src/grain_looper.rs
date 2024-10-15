@@ -103,7 +103,8 @@ impl<T: AudioSampleOps> GrainLooper<T> {
 
     pub fn set_tempo(&mut self, bpm: f32) {
         // since everything is scheduled in beats, we don't need to update much
-        // but the offset needs to stay the same number of samples if we are looping
+        // but the offset needs to stay the same number of samples if we are looping.
+        // existing grains will have the same duration, so there could be gaps
         if self.is_looping {
             let ratio = bpm / self.tempo;
             self.loop_offset_beats *= ratio;
@@ -135,6 +136,9 @@ impl<T: AudioSampleOps> GrainLooper<T> {
 
     // how long the loop is
     pub fn set_grid(&mut self, duration_beats: f32) {
+        assert!(
+            beats_to_samples(duration_beats, self.tempo, self.sample_rate) < MAX_LOOP_LENGTH as f32
+        );
         self.loop_scheduler.set_grid_interval(duration_beats);
     }
 
