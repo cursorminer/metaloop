@@ -13,7 +13,13 @@ impl<E: Clone + Copy + PartialEq> Scheduler<E> {
     }
 
     pub fn schedule_event(&mut self, time: f32, event: E) {
-        assert!(time >= self.events.last().map(|&(t, _)| t).unwrap_or(0.0));
+        let event_time = self.events.last().map(|&(t, _)| t).unwrap_or(0.0);
+        assert!(
+            time >= event_time,
+            "event must be scheduled in future, event: {}, now: {}",
+            time,
+            event_time,
+        );
         self.events.push((time, event));
     }
 
