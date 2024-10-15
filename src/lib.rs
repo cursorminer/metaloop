@@ -33,8 +33,14 @@ struct MetaloopParams {
     #[id = "loop-length"]
     pub loop_length: FloatParam,
 
+    #[id = "length-sixteenths"]
+    pub loop_length_sixteenths: IntParam,
+
     #[id = "loop-offset"]
     pub loop_offset: FloatParam,
+
+    #[id = "loop-offset-sixteenths"]
+    pub loop_offset_sixteenths: IntParam,
 
     #[id = "loop"]
     pub loop_param: BoolParam,
@@ -73,8 +79,20 @@ impl Default for MetaloopParams {
             )
             .with_unit(" s"),
 
+            loop_length_sixteenths: IntParam::new(
+                "Len 16ths",
+                4,
+                IntRange::Linear { min: (1), max: (8) },
+            ),
+
             loop_offset: FloatParam::new("Offset", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit(" s"),
+
+            loop_offset_sixteenths: IntParam::new(
+                "Offset 16ths",
+                0,
+                IntRange::Linear { min: (0), max: (8) },
+            ),
 
             fade: FloatParam::new(
                 "Fade",
@@ -209,22 +227,23 @@ impl Plugin for Metaloop {
 
 impl Metaloop {
     pub fn update_params(&mut self) {
-        self.grain_looper.set_grid(self.params.loop_length.value());
-
-        if self.params.loop_param.value() && !self.grain_looper.is_looping() {
-            self.grain_looper.set_loop_offset(0.1);
-            self.grain_looper.start_looping();
-        } else if !self.params.loop_param.value() && self.grain_looper.is_looping() {
-            self.grain_looper.stop_looping();
-        }
+        // self.grain_looper.set_grid(self.params.loop_length.value());
         self.grain_looper
-            .set_loop_offset(self.params.loop_offset.value());
+            .set_grid((self.params.loop_length_sixteenths.value() as f32) / 4.0);
+        self.grain_looper
+            .set_loop_offset(self.params.loop_offset_sixteenths.value() as f32 / 4.0);
         self.grain_looper
             .set_reverse(self.params.reverse_param.value());
 
         self.grain_looper.set_fade_time(self.params.fade.value());
         self.grain_looper
             .set_speed(self.params.speed.value() / 100.0);
+
+        if self.params.loop_param.value() && !self.grain_looper.is_looping() {
+            self.grain_looper.start_looping();
+        } else if !self.params.loop_param.value() && self.grain_looper.is_looping() {
+            self.grain_looper.stop_looping();
+        }
     }
 }
 
