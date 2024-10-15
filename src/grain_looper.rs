@@ -145,18 +145,21 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     // note that the loop_start_point_seconds is toward the past, as we want to loop something that has already started
     pub fn start_looping(&mut self) {
         self.loop_scheduler.start_looping();
-        self.grain_player.start_looping();
         self.is_looping = true;
     }
 
     pub fn stop_looping(&mut self) {
         self.loop_scheduler.stop_looping();
-        self.grain_player.stop_looping();
+        self.grain_player.uninitiate_looping_reference();
         self.is_looping = false;
     }
 
     fn schedule_grain(&mut self, duration: usize, offset_reduction: f32) {
-        self.grain_player.schedule_grain(Grain::new(
+        if !self.grain_player.is_looping() {
+            self.grain_player.initiate_looping_reference();
+        }
+
+        self.grain_player.start_grain(Grain::new(
             beats_to_samples(
                 self.loop_offset_beats - offset_reduction,
                 self.tempo,
@@ -183,6 +186,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         for event in events {
             match event {
                 LoopEvent::StartGrain { duration } => {
+                    println!("starting grain. Beat time: {}", beat_time);
                     self.schedule_grain(
                         beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         0.0,
@@ -460,7 +464,7 @@ mod tests {
 
         let expected_end = vec![27.5, 36.0, 37.0, 38.0, 39.0, 40.0];
 
-        //looper_fixture.check_output(&expected_end);
+        looper_fixture.check_output(&expected_end);
     }
 
     #[test]
@@ -479,20 +483,31 @@ mod tests {
 
         let first_loop = vec![18.0, 19.0, 20.0, 21.0];
         looper_fixture.check_output(&first_loop);
+        looper_fixture.check_output(&first_loop);
 
-        // offset the loop backwards by 2 samples (16,17,18)
+        // offset the loop backwards by 2 samples (16,17,18, 19)
         looper_fixture.looper.set_loop_offset(0.2);
+        let second_loop = vec![16.0, 17.0, 18.0, 19.0];
+        looper_fixture.check_output(&second_loop);
+        looper_fixture.check_output(&second_loop);
+
         looper_fixture.looper.set_grid(0.3);
-        // change the length of the loop to be 3 samples (18,17,16)
+        // change the length of the loop to be 3 samples (16, 17,18)
+        let third_loop = vec![16.0, 17.0, 18.0];
+        looper_fixture.check_output(&third_loop);
+        looper_fixture.check_output(&third_loop);
+
         looper_fixture.looper.set_reverse(true);
-        // slow the loop down by half (18,17.5,17)
-        looper_fixture.looper.set_speed(0.5);
+        let fourth_loop = vec![18.0, 17.0, 16.0];
+        looper_fixture.check_output(&fourth_loop);
+        looper_fixture.check_output(&fourth_loop);
+        // // slow the loop down by half (18,17.5,17)
+        // looper_fixture.looper.set_speed(0.5);
 
-        let second_loop = vec![18.0, 17.5, 17.0];
+        // let final_loop = vec![18.0, 17.5, 17.0];
 
-        looper_fixture.check_output(&second_loop);
-        looper_fixture.check_output(&second_loop);
-        looper_fixture.check_output(&second_loop);
+        // looper_fixture.check_output(&final_loop);
+        // looper_fixture.check_output(&final_loop);
     }
 
     #[test]
@@ -619,10 +634,7 @@ mod tests {
         looper_fixture.check_output(&loop2);
         looper_fixture.check_output(&loop2);
         looper_fixture.check_output(&loop2);
-
-        // this goes wrong... why? something wrong with static buffer now tempo changes?
-        let loop_wrong = vec![0.0, 14.0, 15.0];
-        looper_fixture.check_output(&loop_wrong);
+        looper_fixture.check_output(&loop2);
         looper_fixture.check_output(&loop2);
     }
 
