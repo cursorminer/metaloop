@@ -11,6 +11,7 @@ mod ramped_value;
 mod scheduler;
 mod stereo_pair;
 mod test_utils;
+use grain_looper::samples_to_beats;
 use grain_looper::GrainLooper;
 use stereo_pair::StereoPair;
 
@@ -22,6 +23,7 @@ struct Metaloop {
     params: Arc<MetaloopParams>,
     grain_looper: GrainLooper<StereoPair<f32>>,
     output: StereoPair<f32>,
+    sample_rate: f32,
 }
 
 #[derive(Params)]
@@ -61,6 +63,7 @@ impl Default for Metaloop {
             params: Arc::new(MetaloopParams::default()),
             grain_looper: GrainLooper::new(44100.0),
             output: StereoPair::default(),
+            sample_rate: 44100.0,
         }
     }
 }
@@ -94,16 +97,8 @@ impl Default for MetaloopParams {
                 IntRange::Linear { min: (0), max: (8) },
             ),
 
-            fade: FloatParam::new(
-                "Fade",
-                0.02,
-                FloatRange::Skewed {
-                    min: 0.005,
-                    max: 0.1,
-                    factor: FloatRange::skew_factor(-1.0),
-                },
-            )
-            .with_unit(" s"),
+            fade: FloatParam::new("Fade", 0.02, FloatRange::Linear { min: 0.0, max: 0.1 })
+                .with_unit(" s"),
 
             speed: FloatParam::new(
                 "Speed",
@@ -172,8 +167,9 @@ impl Plugin for Metaloop {
         // Resize buffers and perform other potentially expensive initialization operations here.
         // The `reset()` function is always called right after this function. You can remove this
         // function if you do not need it.
-        self.grain_looper
-            .set_sample_rate(buffer_config.sample_rate as f32);
+        self.sample_rate = buffer_config.sample_rate as f32;
+
+        self.grain_looper.set_sample_rate(self.sample_rate as f32);
 
         true
     }
@@ -192,12 +188,12 @@ impl Plugin for Metaloop {
     ) -> ProcessStatus {
         self.update_params();
 
+        let tempo = context.transport().tempo.unwrap() as f32;
         // set the tempo
-        self.grain_looper
-            .set_tempo(context.transport().tempo.unwrap() as f32);
+        self.grain_looper.set_tempo(tempo);
 
-        // todo: beat time only updates once per buffer
-        let beat_time = context.transport().pos_beats().unwrap();
+        let beat_time_inc = samples_to_beats(1, tempo, self.sample_rate) as f64;
+        let mut beat_time = context.transport().pos_beats().unwrap();
 
         // todo: this is utter bollocks, output will be delayed by one sample
         for channel_samples in buffer.iter_samples() {
@@ -219,6 +215,7 @@ impl Plugin for Metaloop {
             }
 
             self.output = self.grain_looper.tick(input, beat_time);
+            beat_time = beat_time + beat_time_inc;
         }
 
         ProcessStatus::Normal
