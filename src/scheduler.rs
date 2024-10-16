@@ -12,6 +12,10 @@ impl<E: Clone + Copy + PartialEq> Scheduler<E> {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.clear();
+    }
+
     pub fn schedule_event(&mut self, new_event_time: f32, event: E) {
         let previous_event_time = self.events.last().map(|&(t, _)| t).unwrap_or(0.0);
 

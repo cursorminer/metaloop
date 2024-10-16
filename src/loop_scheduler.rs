@@ -58,8 +58,9 @@ impl LoopScheduler {
     }
 
     pub fn reset(&mut self) {
-        self.scheduler.clear();
+        self.scheduler.reset();
         self.is_looping = false;
+        self.current_song_time = -1.0;
     }
 
     // set fade lead time in beats
@@ -134,7 +135,7 @@ impl LoopScheduler {
         self.current_song_time - previous_grid_interval
     }
 
-    pub fn stop_looping(&mut self) {
+    pub fn stop_looping_on_next_grid(&mut self) {
         assert!(self.is_looping);
         self.is_looping = false;
 
@@ -146,6 +147,18 @@ impl LoopScheduler {
             .schedule_event(next_grid_interval, LoopEvent::StopGrain);
         self.scheduler
             .schedule_event(next_grid_interval, LoopEvent::FadeInDry);
+    }
+
+    pub fn stop_looping_immediately(&mut self) {
+        self.is_looping = false;
+
+        self.scheduler.clear();
+
+        // a time of -1 will get triggered on the next tick no matter what the beat time does
+        self.scheduler
+            .schedule_event(self.current_song_time, LoopEvent::StopGrain);
+        self.scheduler
+            .schedule_event(self.current_song_time, LoopEvent::FadeInDry);
     }
 
     pub fn tick(&mut self, beat_time: f32) -> Vec<LoopEvent> {
@@ -252,7 +265,7 @@ mod tests {
         let out2 = scheduler.tick(2.0);
         assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid }]);
 
-        scheduler.stop_looping();
+        scheduler.stop_looping_on_next_grid();
         let out2 = scheduler.tick(3.0);
         assert_eq!(out2, vec![LoopEvent::StopGrain, LoopEvent::FadeInDry]);
         let out9 = scheduler.tick(9.0);
@@ -289,7 +302,7 @@ mod tests {
         let out2 = scheduler.tick(2.0);
         assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid }]);
 
-        scheduler.stop_looping();
+        scheduler.stop_looping_on_next_grid();
         let out2 = scheduler.tick(3.0);
         assert_eq!(out2, vec![LoopEvent::StopGrain, LoopEvent::FadeInDry]);
         let out9 = scheduler.tick(9.0);

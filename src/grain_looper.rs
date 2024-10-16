@@ -160,7 +160,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     pub fn stop_looping(&mut self) {
-        self.loop_scheduler.stop_looping();
+        self.loop_scheduler.stop_looping_on_next_grid();
         self.grain_player.uninitiate_looping_reference();
         self.is_looping = false;
     }
