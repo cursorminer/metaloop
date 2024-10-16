@@ -190,7 +190,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         for event in events {
             match event {
                 LoopEvent::StartGrain { duration } => {
-                    println!("starting grain. Beat time: {}", beat_time);
                     self.schedule_grain(
                         beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         0.0,
@@ -598,7 +597,7 @@ mod tests {
         looper_fixture.check_output(&initial);
 
         // set offset to be the loop length to loop the most recent 5 samples
-        looper_fixture.looper.set_loop_offset(first_len);
+        looper_fixture.looper.set_loop_offset(0.0);
         looper_fixture.looper.set_grid(first_len);
         looper_fixture.looper.start_looping();
 
@@ -628,7 +627,7 @@ mod tests {
         let initial = vec![10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0];
         looper_fixture.check_output(&initial);
 
-        looper_fixture.looper.set_loop_offset(loop_beats);
+        looper_fixture.looper.set_loop_offset(0.0);
         looper_fixture.looper.set_grid(loop_beats);
         looper_fixture.looper.start_looping();
 
@@ -649,7 +648,7 @@ mod tests {
 
     #[test]
     fn test_loop_after_full_buffer() {
-        // test that we can loop long after the buffer is full
+        // TODO test that we can loop long after the buffer is full
         let mut looper_fixture = GrainLooperFixture::new();
 
         let loop_beats = 0.4;
