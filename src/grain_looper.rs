@@ -96,6 +96,12 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         self.dry_ramp.set(1.0);
     }
 
+    pub fn stop_looping_immediately(&mut self) {
+        self.is_looping = false;
+        self.loop_scheduler.stop_looping_immediately();
+        self.grain_player.stop_all_grains();
+    }
+
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
         self.update_scheduler_fade();
@@ -151,8 +157,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             self.tempo,
             self.sample_rate,
         ) as usize;
-
-        println!("num {}", num_samples_to_previous_grid);
 
         self.grain_player
             .initiate_looping_reference(num_samples_to_previous_grid + 1);

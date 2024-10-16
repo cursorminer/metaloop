@@ -186,10 +186,20 @@ impl Plugin for Metaloop {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        self.update_params();
+        if self.grain_looper.is_looping() {
+            self.update_params();
+        }
+
+        if self.grain_looper.is_looping()
+            && !context.transport().playing
+            && self.params.loop_param.value()
+        {
+            // if transport stops reset everything
+            self.grain_looper.stop_looping_immediately();
+            self.grain_looper.reset();
+        }
 
         let tempo = context.transport().tempo.unwrap() as f32;
-        // set the tempo
         self.grain_looper.set_tempo(tempo);
 
         let beat_time_inc = samples_to_beats(1, tempo, self.sample_rate) as f64;
@@ -218,6 +228,15 @@ impl Plugin for Metaloop {
             beat_time = beat_time + beat_time_inc;
         }
 
+        // if the transport has been stopped, stop the loop and reset the block
+        if !self.grain_looper.is_looping()
+            && context.transport().playing
+            && self.params.loop_param.value()
+        {
+            // if the transport has started, and loop is on then restart looping the first input
+            self.grain_looper.start_looping();
+        }
+
         ProcessStatus::Normal
     }
 }
@@ -225,6 +244,7 @@ impl Plugin for Metaloop {
 impl Metaloop {
     pub fn update_params(&mut self) {
         // self.grain_looper.set_grid(self.params.loop_length.value());
+
         self.grain_looper
             .set_grid((self.params.loop_length_sixteenths.value() as f32) / 4.0);
         self.grain_looper
