@@ -279,8 +279,8 @@ mod tests {
     fn test_grain_player_stop_all() {
         let mut player = GrainPlayer::new_with_length(100, 10, 10);
 
-        player.start_grain(Grain::new(10.0, 4, 2, false, 1.0));
-        player.start_grain(Grain::new(10.0, 10, 2, false, 1.0));
+        player.start_grain(Grain::new(10.0, 2, 2, false, 1.0));
+        player.start_grain(Grain::new(10.0, 8, 2, false, 1.0));
 
         assert_eq!(player.num_playing_grains(), 2);
 
@@ -461,6 +461,7 @@ mod tests {
 
         // once looping all grains with the same offset should output the same thing
         let fade = 1;
+        let duration = 3;
 
         let mut input_iter = input.iter();
         // tick twice
@@ -468,7 +469,7 @@ mod tests {
         player.tick(*input_iter.next().unwrap());
 
         // this grain reads the rolling buffer
-        player.start_grain(Grain::new(5.0, 4, fade, false, 1.0));
+        player.start_grain(Grain::new(5.0, duration, fade, false, 1.0));
 
         // wrong...?
         let expected_g1 = vec![2.5, 6.0, 7.0, 4.0, 0.0, 0.0];
@@ -479,7 +480,7 @@ mod tests {
         assert_eq!(out1, expected_g1);
 
         // this grain reads both the rolling buffer and then the static buffer
-        player.start_grain(Grain::new(5.0, 4, fade, false, 1.0));
+        player.start_grain(Grain::new(5.0, duration, fade, false, 1.0));
         let expected_g2 = vec![2.5, 6.0, 7.0, 4.0, 0.0, 0.0];
         let mut out2 = vec![];
         for _ in expected_g2.iter() {
@@ -488,8 +489,8 @@ mod tests {
         assert_eq!(out2, expected_g2);
 
         // this grain reads the static buffer, despite the fact we switched back to the rolling buffer half way through
-        player.start_grain(Grain::new(5.0, 4, fade, true, 1.0));
-        let expected_g3 = vec![4.0, 7.0, 6.0, 2.5];
+        player.start_grain(Grain::new(5.0, duration, fade, false, 1.0));
+        let expected_g3 = vec![2.5, 6.0, 7.0, 4.0];
 
         let mut out3 = vec![];
         for _ in expected_g3.iter() {
@@ -516,8 +517,7 @@ mod tests {
         }
 
         player.initiate_looping_reference(0);
-        // set offset to be the loop length to loop the most recent 4 samples (4,5,6,7)
-        player.start_grain(Grain::new(4.0, 4, 1, true, 1.0));
+        player.start_grain(Grain::new(3.0, 3, 1, true, 1.0));
 
         for i in loop_start_at..stop_at {
             out.push(player.tick(i as f32));
@@ -525,6 +525,7 @@ mod tests {
 
         let mut expected = vec![0.0; 8];
 
+        // the unfaded samples would be 7,6,5,4 but the edges are halved due to fade to zero
         let grain_samples = vec![3.5, 6.0, 5.0, 2.0];
 
         expected.extend(&grain_samples);
@@ -538,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_start_stop_too_fast() {
+    fn test_grain_player_start_stop_too_fast() {
         // this tests the situation where we have a frozen buffer, but we try to start two new looping sessions
         // within a single fade. This is tricky because the fade out assumes a frozen buffer, and two stop starts
         //will unfreeze both buffers.
@@ -563,7 +564,7 @@ mod tests {
         let fade = 5;
 
         // this grain reads the rolling buffer
-        player.start_grain(Grain::new(6.0, 6, fade, false, 1.0));
+        player.start_grain(Grain::new(6.0, 1, fade, false, 1.0));
 
         // a build up of multiple fading grains
         let expected = vec![1.0, 2.5, 15.0, 56.25, 65.0, 62.25, 41.75, 24.75, 6.75];
@@ -575,13 +576,13 @@ mod tests {
         player.uninitiate_looping_reference();
         out1.push(player.tick(*input_iter.next().unwrap()));
         player.initiate_looping_reference(0);
-        player.start_grain(Grain::new(0.0, 6, fade, false, 1.0));
+        player.start_grain(Grain::new(0.0, 1, fade, false, 1.0));
 
         // stop and start will unfreeze B, and switch to making new grain on A, which will reset rolling_offset_a
         player.uninitiate_looping_reference();
         out1.push(player.tick(*input_iter.next().unwrap()));
         player.initiate_looping_reference(0);
-        player.start_grain(Grain::new(20.0, 6, fade, false, 1.0));
+        player.start_grain(Grain::new(20.0, 1, fade, false, 1.0));
 
         for _ in 0..6 {
             out1.push(player.tick(*input_iter.next().unwrap()));

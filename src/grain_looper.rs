@@ -172,7 +172,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                 self.tempo,
                 self.sample_rate,
             ) as f32,
-            duration + self.fade_duration_samples,
+            duration,
             self.fade_duration_samples,
             self.reverse,
             self.speed,
@@ -454,7 +454,7 @@ mod tests {
 
         looper_fixture.looper.start_looping();
 
-        // last sample will fade from dry to the loop
+        // last sample will fade from dry 24 to the loop 19
         let lead_up = vec![20.0, 21.0, 22.0, 23.0, 21.5];
 
         looper_fixture.check_output(&lead_up);
@@ -520,8 +520,7 @@ mod tests {
 
     #[test]
     fn test_grain_looper_immediate_reverse() {
-        // in this case, we need to add a special offset to avoid
-        // reading into the future
+        // check that we can reverse with no offset
         let mut looper_fixture = GrainLooperFixture::new();
 
         let expected1 = (10..18).map(|x| x as f32).collect();
@@ -550,12 +549,16 @@ mod tests {
         looper_fixture.check_output(&expected1);
 
         looper_fixture.looper.set_fade_time(0.2);
-        looper_fixture.looper.set_loop_offset(0.4);
+        looper_fixture.looper.set_loop_offset(0.0);
         looper_fixture.looper.set_grid(0.4);
         looper_fixture.looper.set_reverse(true);
         looper_fixture.looper.start_looping();
 
+        // starting to loop
+        //                    0.8    0.9    1.0
+        //                                20 \ 15    21 \ 16
         let start_loop = vec![18.0, 19.0, 19.666668, 19.0];
+        //                                  15 \ 19    14 \ 18
         let loop_samples = vec![17.0, 16.0, 16.333334, 16.666668];
 
         looper_fixture.check_output(&start_loop);

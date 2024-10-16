@@ -27,7 +27,7 @@ pub struct Grain {
 #[allow(dead_code)]
 impl Grain {
     // offset: the initial delay time where the grain starts
-    // duration: the duration of the grain in terms of how much buffer to read
+    // duration: the duration of the grain not including fade (i.e. loop length)
     // fade: number of samples to fade in and out (this is within the duration above)
     // speed: how fast to play the grain, 1 is normal, 0.5 is half speed
     pub fn new(offset: f32, duration: usize, fade: usize, reverse: bool, speed: f32) -> Grain {
@@ -39,27 +39,29 @@ impl Grain {
 
         let sample_increment = if reverse { -speed } else { speed };
 
+        let mut total_tick_duration = duration + fade;
+
         // check if faster grain needs to be shorter to avoid buffer overflows
-        let actual_duration = if speed > 1.0 {
-            let more_samples = (duration as f32 * speed) as usize;
+        total_tick_duration = if speed > 1.0 {
+            let more_samples = (total_tick_duration as f32 * speed) as usize;
             if more_samples > offset as usize {
                 (offset / speed) as usize
             } else {
-                duration
+                total_tick_duration
             }
         } else {
-            duration
+            total_tick_duration
         };
 
-        let actual_fade = if (fade * 2) > actual_duration {
-            actual_duration / 2
+        let actual_fade = if (fade * 2) > total_tick_duration {
+            total_tick_duration / 2
         } else {
             fade
         };
 
         Grain {
             delay_pos: start_delay,
-            duration: actual_duration,
+            duration: total_tick_duration,
             fade_duration: actual_fade,
             elapsed_sample_count: 0,
             offset: offset,
@@ -163,8 +165,8 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_fade() {
-        let mut grain = Grain::new(10.0, 9, 3, false, 1.0);
+    fn test_one_grain_fade() {
+        let mut grain = Grain::new(10.0, 6, 3, false, 1.0);
 
         let expected = vec![
             (9.0, 0.25),
@@ -187,8 +189,8 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_stop() {
-        let mut grain = Grain::new(20.0, 15, 3, false, 1.0);
+    fn test_one_grain_stop() {
+        let mut grain = Grain::new(20.0, 12, 3, false, 1.0);
 
         let expected = vec![
             (19.0, 0.25),
@@ -224,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_reverse() {
+    fn test_one_grain_reverse() {
         let mut grain = Grain::new(10.0, 5, 0, true, 1.0);
 
         let expected = vec![(5.0, 1.0), (6.0, 1.0), (7.0, 1.0), (8.0, 1.0), (9.0, 1.0)];
@@ -247,8 +249,10 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_fade_reverse() {
-        let mut grain = Grain::new(10.0, 10, 3, true, 1.0);
+    fn test_one_grain_fade_reverse() {
+        // when reversing, we expect the offset to be minimum of the duration, so we should check
+        // that starts at zero delay
+        let mut grain = Grain::new(7.0, 7, 3, true, 1.0);
 
         let expected = vec![
             (0.0, 0.25),
@@ -272,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_half_speed() {
+    fn test_one_grain_half_speed() {
         let mut grain = Grain::new(10.0, 5, 0, false, 0.5);
 
         let expected = vec![
@@ -294,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_double_speed() {
+    fn test_one_grain_double_speed() {
         // when offset is long enough
         let mut grain = Grain::new(10.0, 5, 0, false, 2.0);
 
@@ -318,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grain_double_speed_stops_early() {
+    fn test_one_grain_double_speed_stops_early() {
         // when offset is not long enough
         let mut grain = Grain::new(5.0, 5, 0, false, 2.0);
 
