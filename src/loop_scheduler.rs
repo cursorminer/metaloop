@@ -76,7 +76,7 @@ impl LoopScheduler {
 
         self.scheduler.clear();
 
-        let next_old_grid_interval = self.next_grid(false);
+        let next_old_grid_interval = self.next_grid(true);
         let next_new_grid_interval = next_grid_in_beats(
             self.current_song_time,
             new_interval_beats,
@@ -293,6 +293,7 @@ mod tests {
 
     #[test]
     fn test_loop_scheduler_shorten_loop() {
+        // test the situation where we shorted a loop whilst a longer loop is playing
         let mut scheduler = LoopScheduler::new();
 
         let grid1 = 1.0;
