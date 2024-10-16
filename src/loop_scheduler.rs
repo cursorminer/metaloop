@@ -69,13 +69,6 @@ impl LoopScheduler {
     }
 
     pub fn set_grid_interval(&mut self, new_interval_beats: f32) {
-        if new_interval_beats == self.grid_interval || !self.is_looping {
-            self.grid_interval = new_interval_beats;
-            return;
-        }
-
-        self.scheduler.clear();
-
         let next_old_grid_interval = self.next_grid(true);
         let next_new_grid_interval = next_grid_in_beats(
             self.current_song_time,
@@ -83,24 +76,36 @@ impl LoopScheduler {
             self.fade_in_time,
         );
 
-        if new_interval_beats < self.grid_interval {
-            // if a shorter interval, need to stop the current grain
+        // the simple cases just work
+        if new_interval_beats == self.grid_interval
+            || !self.is_looping
+            || next_old_grid_interval == next_new_grid_interval
+        {
+            self.grid_interval = new_interval_beats;
+            return;
+        }
+
+        // otherwise, the next grid interval has changed and we need to reschedule some things
+        self.scheduler.clear();
+
+        if next_new_grid_interval < next_old_grid_interval {
+            // we need to stop the current grain at the new grid interval
             self.scheduler
                 .schedule_event(next_new_grid_interval, LoopEvent::StopGrain);
-        } else if new_interval_beats > self.grid_interval {
-            if next_new_grid_interval > next_old_grid_interval {
-                // need a grain that will take us to the longer grid interval from the end of the shorter
-                let reduced_grid_interval = next_new_grid_interval - next_old_grid_interval;
-                let how_far_thru = new_interval_beats - reduced_grid_interval;
-                self.scheduler.schedule_event(
-                    next_old_grid_interval,
-                    LoopEvent::StartLegatoGrain {
-                        duration: reduced_grid_interval,
-                        offset_reduction: how_far_thru,
-                    },
-                );
-            }
+        } else {
+            // next_new_grid_interval > next_old_grid_interval
+            // need an interim grain that will take us to the longer grid interval from the end of the shorter
+            let reduced_grid_interval = next_new_grid_interval - next_old_grid_interval;
+            let how_far_thru = new_interval_beats - reduced_grid_interval;
+            self.scheduler.schedule_event(
+                next_old_grid_interval,
+                LoopEvent::StartLegatoGrain {
+                    duration: reduced_grid_interval,
+                    offset_reduction: how_far_thru,
+                },
+            );
         }
+
         self.scheduler
             .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
         self.grid_interval = new_interval_beats;

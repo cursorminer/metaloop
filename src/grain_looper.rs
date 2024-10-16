@@ -498,9 +498,10 @@ mod tests {
         looper_fixture.check_output(&second_loop);
         looper_fixture.check_output(&second_loop);
 
-        looper_fixture.looper.set_grid(0.3);
         // shorten the length of the loop to be 3 samples (16, 17,18)
-        let third_loop = vec![16.0, 17.0, 18.0, 16.0, 17.0, 18.0];
+        // note that the grid takes 2 samples to arrive
+        looper_fixture.looper.set_grid(0.3);
+        let third_loop = vec![17.0, 18.0, 16.0, 17.0, 18.0, 16.0, 17.0, 18.0];
         looper_fixture.check_output(&third_loop);
 
         looper_fixture.looper.set_speed(0.5);
