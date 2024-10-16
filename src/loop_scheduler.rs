@@ -14,7 +14,7 @@ pub enum LoopEvent {
     StopGrain,  // stops the grain player
     FadeOutDry, // fade out the dry signal
     FadeInDry,  // fade in the dry signal
-    NextLoop,   // start the next loop, recurs
+    NextLoop,   // start the next loop. will schedule a new grain and schedule another NextLoop
 }
 pub struct LoopScheduler {
     scheduler: Scheduler<LoopEvent>,
@@ -73,8 +73,10 @@ impl LoopScheduler {
             self.grid_interval = new_interval_beats;
             return;
         }
+
         self.scheduler.clear();
-        let next_old_grid_interval = self.next_grid(true);
+
+        let next_old_grid_interval = self.next_grid(false);
         let next_new_grid_interval = next_grid_in_beats(
             self.current_song_time,
             new_interval_beats,
@@ -131,7 +133,7 @@ impl LoopScheduler {
         assert!(self.is_looping);
         self.is_looping = false;
 
-        let next_grid_interval = self.next_grid(false);
+        let next_grid_interval = self.next_grid(true);
 
         self.scheduler.clear();
 
@@ -329,6 +331,9 @@ mod tests {
                 LoopEvent::StartGrain { duration: grid2 }
             ]
         );
+
+        let out3 = scheduler.tick(3.0);
+        assert_eq!(out3, vec![LoopEvent::StartGrain { duration: grid2 }]);
     }
 
     #[test]
