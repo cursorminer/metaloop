@@ -194,7 +194,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                         beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         0.0,
                     );
-                    self.is_looping = true;
                 }
                 LoopEvent::StartLegatoGrain {
                     duration,
@@ -204,7 +203,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                         beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
                         offset_reduction,
                     );
-                    self.is_looping = true;
                 }
                 LoopEvent::StopGrain => {
                     // we stop them all
@@ -498,9 +496,8 @@ mod tests {
         looper_fixture.check_output(&second_loop);
 
         looper_fixture.looper.set_grid(0.3);
-        // change the length of the loop to be 3 samples (16, 17,18)
-        let third_loop = vec![16.0, 17.0, 18.0];
-        looper_fixture.check_output(&third_loop);
+        // shorten the length of the loop to be 3 samples (16, 17,18)
+        let third_loop = vec![16.0, 17.0, 18.0, 16.0, 17.0, 18.0];
         looper_fixture.check_output(&third_loop);
 
         looper_fixture.looper.set_speed(0.5);
