@@ -30,6 +30,7 @@ pub struct MyParamSlider<'a, P: Param> {
     setter: &'a ParamSetter<'a>,
 
     slider_width: Option<f32>,
+    slider_height: Option<f32>,
 
     /// Will be set in the `ui()` function so we can request keyboard input focus on Alt+click.
     keyboard_focus_id: Option<egui::Id>,
@@ -44,6 +45,7 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
             setter,
 
             slider_width: None,
+            slider_height: None,
 
             keyboard_focus_id: None,
         }
@@ -52,6 +54,10 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
     /// Set a custom width for the slider.
     pub fn with_width(mut self, width: f32) -> Self {
         self.slider_width = Some(width);
+        self
+    }
+    pub fn with_height(mut self, height: f32) -> Self {
+        self.slider_height = Some(height);
         self
     }
 
@@ -225,12 +231,15 @@ impl<P: Param> Widget for MyParamSlider<'_, P> {
             .slider_width
             .unwrap_or_else(|| ui.spacing().slider_width);
 
+        let slider_height = self
+            .slider_width
+            .unwrap_or_else(|| ui.spacing().slider_rail_height);
+
         ui.horizontal(|ui| {
             // Allocate space, but add some padding on the top and bottom to make it look a bit slimmer.
             let height = ui
                 .text_style_height(&TextStyle::Body)
                 .max(ui.spacing().interact_size.y * 0.8);
-            let slider_height = ui.painter().round_to_pixel(height * 0.8);
             let mut response = ui
                 .vertical(|ui| {
                     ui.allocate_space(vec2(slider_width, (height - slider_height) / 2.0));

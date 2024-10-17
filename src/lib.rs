@@ -118,7 +118,7 @@ impl Default for MetaloopParams {
 
             loop_param: BoolParam::new("Loop", false),
             reverse_param: BoolParam::new("Reverse", false),
-            editor_state: EguiState::from_size(300, 180),
+            editor_state: EguiState::from_size(800, 600),
         }
     }
 }
@@ -255,10 +255,11 @@ impl Plugin for Metaloop {
             move |egui_ctx, setter, _state| {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.label("Int");
-                    ui.add(ui::MyParamSlider::for_param(
-                        &params.loop_offset_sixteenths,
-                        setter,
-                    ));
+                    ui.add(
+                        ui::MyParamSlider::for_param(&params.loop_offset_sixteenths, setter)
+                            .with_width(700.0)
+                            .with_height(300.0),
+                    );
                 });
             },
         )
