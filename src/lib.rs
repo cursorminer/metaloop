@@ -56,6 +56,9 @@ struct MetaloopParams {
 
     #[id = "speed"]
     pub speed: FloatParam,
+
+    #[persist = "editor-state"]
+    editor_state: Arc<EguiState>,
 }
 
 impl Default for Metaloop {
@@ -114,6 +117,7 @@ impl Default for MetaloopParams {
 
             loop_param: BoolParam::new("Loop", false),
             reverse_param: BoolParam::new("Reverse", false),
+            editor_state: EguiState::from_size(300, 180),
         }
     }
 }
@@ -239,6 +243,24 @@ impl Plugin for Metaloop {
         }
 
         ProcessStatus::Normal
+    }
+
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        let params = self.params.clone();
+        create_egui_editor(
+            self.params.editor_state.clone(),
+            (),
+            |_, _| {},
+            move |egui_ctx, setter, _state| {
+                egui::CentralPanel::default().show(egui_ctx, |ui| {
+                    ui.label("Int");
+                    ui.add(widgets::ParamSlider::for_param(
+                        &params.loop_offset_sixteenths,
+                        setter,
+                    ));
+                });
+            },
+        )
     }
 }
 
