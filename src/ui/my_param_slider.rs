@@ -141,9 +141,9 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
 
             // TODO start looping!
         }
+        let widget_size = response.rect.size();
         if let Some(click_pos) = response.interact_pointer_pos() {
             // call set_normalized_value with normalized position
-            let widget_size = response.rect.size();
 
             self.set_normalized_value(click_pos.x / widget_size.x, click_pos.y / widget_size.y);
 
@@ -162,6 +162,39 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
             // We'll do a flat widget with background -> filled foreground -> slight border
             ui.painter()
                 .rect_filled(response.rect, 0.0, ui.visuals().widgets.inactive.bg_fill);
+
+            // draw a grid for the steppy param
+            if let Some(x_steps) = self.x_param.step_count() {
+                let x_grid_size = widget_size.x / x_steps as f32;
+
+                for i in 0..x_steps {
+                    let x = i as f32 * x_grid_size + response.rect.min.x;
+                    ui.painter().vline(
+                        x,
+                        emath::Rangef {
+                            max: response.rect.min.y,
+                            min: response.rect.max.y,
+                        },
+                        ui.visuals().widgets.active.bg_stroke,
+                    );
+                }
+            }
+
+            if let Some(y_steps) = self.y_param.step_count() {
+                let y_grid_size = widget_size.y / y_steps as f32;
+
+                for i in 0..y_steps {
+                    let y = i as f32 * y_grid_size + response.rect.min.y;
+                    ui.painter().hline(
+                        emath::Rangef {
+                            max: response.rect.min.x,
+                            min: response.rect.max.x,
+                        },
+                        y,
+                        ui.visuals().widgets.active.bg_stroke,
+                    );
+                }
+            }
 
             // draw a dot at mouse pos for fun
             if let Some(click_pos) = self.click_pos {
