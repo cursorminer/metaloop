@@ -4,7 +4,7 @@ use nih_plug::prelude::{Param, ParamSetter};
 use nih_plug_egui::widgets::util;
 
 use nih_plug_egui::egui::{
-    self, emath, vec2, Response, Sense, Stroke, TextStyle, Ui, Vec2, Widget,
+    self, emath, vec2, CursorIcon, Response, Sense, Stroke, TextStyle, Ui, Vec2, Widget,
 };
 
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
@@ -34,6 +34,8 @@ pub struct MyParamSlider<'a, P: Param> {
 
     /// Will be set in the `ui()` function so we can request keyboard input focus on Alt+click.
     keyboard_focus_id: Option<egui::Id>,
+
+    click_pos: Option<emath::Pos2>,
 }
 
 impl<'a, P: Param> MyParamSlider<'a, P> {
@@ -48,6 +50,8 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
             slider_height: None,
 
             keyboard_focus_id: None,
+
+            click_pos: None,
         }
     }
 
@@ -158,7 +162,7 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
         ui.memory_mut(|mem| mem.data.insert_temp(*DRAG_AMOUNT_MEMORY_ID, amount));
     }
 
-    fn slider_ui(&self, ui: &Ui, response: &mut Response) {
+    fn slider_ui(&mut self, ui: &Ui, response: &mut Response) {
         // Handle user input
         // TODO: Optionally (since it can be annoying) add scrolling behind a builder option
         if response.drag_started() {
@@ -189,6 +193,8 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
                 response.mark_changed();
                 Self::set_drag_amount_memory(ui, 0.0);
             }
+
+            self.click_pos = response.interact_pointer_pos();
         }
         if response.double_clicked() {
             self.reset_param();
@@ -221,6 +227,20 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
                 0.0,
                 Stroke::new(1.0, ui.visuals().widgets.active.bg_fill),
             );
+
+            // draw a dot at mouse pos for fun
+            if let Some(click_pos) = self.click_pos {
+                ui.painter().circle(
+                    click_pos,
+                    5.0,
+                    ui.visuals().selection.bg_fill,
+                    Stroke::new(1.0, ui.visuals().widgets.active.bg_fill),
+                );
+            }
+        }
+        // This doesn't work....
+        if response.hovered() || response.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
         }
     }
 }
