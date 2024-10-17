@@ -7,6 +7,8 @@ use nih_plug_egui::egui::{
     self, emath, vec2, CursorIcon, Response, Sense, Stroke, TextStyle, Ui, Vec2, Widget,
 };
 
+use emath::{Pos2, Rangef, Rect};
+
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
 /// noramlized parameter.
 const GRANULAR_DRAG_MULTIPLIER: f32 = 0.0015;
@@ -75,11 +77,11 @@ impl<'a> MyParamSlider<'a> {
     }
 
     fn plain_value_x(&self) -> <nih_plug::prelude::IntParam as nih_plug::prelude::Param>::Plain {
-        self.x_param.modulated_plain_value()
+        self.unnormalize(&self.x_param.range(), self.normalized_value_x())
     }
 
     fn plain_value_y(&self) -> <nih_plug::prelude::IntParam as nih_plug::prelude::Param>::Plain {
-        self.y_param.modulated_plain_value()
+        self.unnormalize(&self.y_param.range(), self.normalized_value_y())
     }
 
     fn normalized_value_x(&self) -> f32 {
@@ -87,7 +89,7 @@ impl<'a> MyParamSlider<'a> {
     }
 
     fn normalized_value_y(&self) -> f32 {
-        self.x_param.modulated_normalized_value()
+        self.y_param.modulated_normalized_value()
     }
 
     fn string_value_x(&self) -> String {
@@ -174,6 +176,7 @@ impl<'a> MyParamSlider<'a> {
             self.end_drag();
         }
 
+        // TODO this is sending zillions of messages, stop it from doing that
         if response.is_pointer_button_down_on() {
             self.setter.begin_set_parameter(self.on_param);
             self.setter.set_parameter(self.on_param, true);
@@ -191,45 +194,54 @@ impl<'a> MyParamSlider<'a> {
                 .rect_filled(response.rect, 0.0, ui.visuals().widgets.inactive.bg_fill);
 
             // draw a grid for the steppy param
-            if let Some(x_steps) = self.x_param.step_count() {
-                let x_grid_size = widget_size.x / x_steps as f32;
+            let x_steps = self.x_param.step_count().unwrap();
+            let y_steps = self.y_param.step_count().unwrap();
 
-                for i in 0..x_steps {
-                    let x = i as f32 * x_grid_size + response.rect.min.x;
-                    ui.painter().vline(
-                        x,
-                        emath::Rangef {
-                            max: response.rect.min.y,
-                            min: response.rect.max.y,
-                        },
-                        ui.visuals().widgets.active.bg_stroke,
-                    );
-                }
+            let x_grid_size = widget_size.x / (x_steps + 1) as f32;
+            let y_grid_size = widget_size.y / (y_steps + 1) as f32;
+
+            for i in 0..x_steps + 2 {
+                let x = i as f32 * x_grid_size + response.rect.min.x;
+                ui.painter().vline(
+                    x,
+                    emath::Rangef {
+                        max: response.rect.min.y,
+                        min: response.rect.max.y,
+                    },
+                    ui.visuals().widgets.active.bg_stroke,
+                );
             }
 
-            if let Some(y_steps) = self.y_param.step_count() {
-                let y_grid_size = widget_size.y / y_steps as f32;
-
-                for i in 0..y_steps {
-                    let y = i as f32 * y_grid_size + response.rect.min.y;
-                    ui.painter().hline(
-                        emath::Rangef {
-                            max: response.rect.min.x,
-                            min: response.rect.max.x,
-                        },
-                        y,
-                        ui.visuals().widgets.active.bg_stroke,
-                    );
-                }
+            for i in 0..y_steps + 2 {
+                let y = i as f32 * y_grid_size + response.rect.min.y;
+                ui.painter().hline(
+                    emath::Rangef {
+                        max: response.rect.min.x,
+                        min: response.rect.max.x,
+                    },
+                    y,
+                    ui.visuals().widgets.active.bg_stroke,
+                );
             }
 
-            // draw a dot at mouse pos for fun
+            // draw a square on the active grid square
+            let min_x = x_steps as f32 * self.normalized_value_x() as f32 * x_grid_size
+                + response.rect.min.x;
+            println!("min_x {}", min_x);
+            let max_x = min_x + x_grid_size;
+
+            let min_y = y_steps as f32 * self.normalized_value_y() as f32 * y_grid_size
+                + response.rect.min.y;
+            let max_y = min_y + y_grid_size;
+
             if let Some(click_pos) = self.click_pos {
-                ui.painter().circle(
-                    click_pos,
-                    5.0,
-                    ui.visuals().selection.bg_fill,
-                    Stroke::new(1.0, ui.visuals().widgets.active.bg_fill),
+                ui.painter().rect_filled(
+                    Rect {
+                        min: Pos2 { x: min_x, y: min_y },
+                        max: Pos2 { x: max_x, y: max_y },
+                    },
+                    0.0,
+                    ui.visuals().hyperlink_color,
                 );
             }
         }
