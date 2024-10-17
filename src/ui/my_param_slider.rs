@@ -1,6 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
-use nih_plug::prelude::{Param, ParamSetter};
+use nih_plug::prelude::{IntParam, IntRange, Param, ParamSetter};
 use nih_plug_egui::widgets::util;
 
 use nih_plug_egui::egui::{
@@ -24,9 +24,9 @@ static DRAG_NORMALIZED_START_VALUE_MEMORY_ID: LazyLock<egui::Id> =
 ///       repeat everything
 /// TODO: Add WidgetInfo annotations for accessibility
 #[must_use = "You should put this widget in an ui with `ui.add(widget);`"]
-pub struct MyParamSlider<'a, P: Param> {
-    x_param: &'a P,
-    y_param: &'a P,
+pub struct MyParamSlider<'a> {
+    x_param: &'a IntParam,
+    y_param: &'a IntParam,
     setter: &'a ParamSetter<'a>,
 
     slider_width: Option<f32>,
@@ -38,10 +38,14 @@ pub struct MyParamSlider<'a, P: Param> {
     click_pos: Option<emath::Pos2>,
 }
 
-impl<'a, P: Param> MyParamSlider<'a, P> {
+impl<'a> MyParamSlider<'a> {
     /// Create a new slider for a parameter. Use the other methods to modify the slider before
     /// passing it to [`Ui::add()`].
-    pub fn for_param(x_param: &'a P, y_param: &'a P, setter: &'a ParamSetter<'a>) -> Self {
+    pub fn for_param(
+        x_param: &'a IntParam,
+        y_param: &'a IntParam,
+        setter: &'a ParamSetter<'a>,
+    ) -> Self {
         Self {
             x_param,
             y_param,
@@ -66,11 +70,11 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
         self
     }
 
-    fn plain_value_x(&self) -> P::Plain {
+    fn plain_value_x(&self) -> <nih_plug::prelude::IntParam as nih_plug::prelude::Param>::Plain {
         self.x_param.modulated_plain_value()
     }
 
-    fn plain_value_y(&self) -> P::Plain {
+    fn plain_value_y(&self) -> <nih_plug::prelude::IntParam as nih_plug::prelude::Param>::Plain {
         self.y_param.modulated_plain_value()
     }
 
@@ -102,17 +106,28 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
         self.setter.begin_set_parameter(self.y_param);
     }
 
+    // this is a hack to work around the rounding in the nih-plug which we'd rather be flooring
+    pub fn unnormalize(&self, &range: &IntRange, normalized: f32) -> i32 {
+        let normalized = normalized.clamp(0.0, 1.0);
+        match range {
+            IntRange::Linear { min, max } => {
+                (normalized * (max - min + 1) as f32).floor() as i32 + min
+            }
+            IntRange::Reversed(range) => range.unnormalize(1.0 - normalized),
+        }
+    }
+
     fn set_normalized_value(&self, normalized_x: f32, normalized_y: f32) {
         // This snaps to the nearest plain value if the parameter is stepped in some way.
         // TODO: As an optimization, we could add a `const CONTINUOUS: bool` to the parameter to
         //       avoid this normalized->plain->normalized conversion for parameters that don't need
         //       it
-        let value = self.x_param.preview_plain(normalized_x);
+        let value = self.unnormalize(&self.x_param.range(), normalized_x);
         if value != self.plain_value_x() {
             self.setter.set_parameter(self.x_param, value);
         }
 
-        let value = self.y_param.preview_plain(normalized_y);
+        let value = self.unnormalize(&self.y_param.range(), normalized_y);
         if value != self.plain_value_y() {
             self.setter.set_parameter(self.y_param, value);
         }
@@ -213,7 +228,7 @@ impl<'a, P: Param> MyParamSlider<'a, P> {
     }
 }
 
-impl<P: Param> Widget for MyParamSlider<'_, P> {
+impl Widget for MyParamSlider<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         let slider_width = self
             .slider_width
