@@ -259,9 +259,13 @@ impl Plugin for Metaloop {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.label("Int");
                     ui.add(
-                        ui::MyParamSlider::for_param(&params.loop_offset_sixteenths, setter)
-                            .with_width(window_size.x)
-                            .with_height(window_size.y),
+                        ui::MyParamSlider::for_param(
+                            &params.loop_offset_sixteenths,
+                            &params.loop_length_sixteenths,
+                            setter,
+                        )
+                        .with_width(window_size.x)
+                        .with_height(window_size.y),
                     );
                 });
             },
