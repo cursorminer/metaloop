@@ -261,6 +261,7 @@ impl Plugin for Metaloop {
                         ui::MyParamSlider::for_param(
                             &params.loop_offset_sixteenths,
                             &params.loop_length_sixteenths,
+                            &params.loop_param,
                             setter,
                         )
                         .with_width(window_size.x)

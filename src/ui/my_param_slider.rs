@@ -1,6 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
-use nih_plug::prelude::{IntParam, IntRange, Param, ParamSetter};
+use nih_plug::prelude::{BoolParam, IntParam, IntRange, Param, ParamSetter};
 use nih_plug_egui::widgets::util;
 
 use nih_plug_egui::egui::{
@@ -27,6 +27,7 @@ static DRAG_NORMALIZED_START_VALUE_MEMORY_ID: LazyLock<egui::Id> =
 pub struct MyParamSlider<'a> {
     x_param: &'a IntParam,
     y_param: &'a IntParam,
+    on_param: &'a BoolParam,
     setter: &'a ParamSetter<'a>,
 
     slider_width: Option<f32>,
@@ -44,11 +45,14 @@ impl<'a> MyParamSlider<'a> {
     pub fn for_param(
         x_param: &'a IntParam,
         y_param: &'a IntParam,
+        on_param: &'a BoolParam,
         setter: &'a ParamSetter<'a>,
     ) -> Self {
         Self {
             x_param,
             y_param,
+            on_param,
+
             setter,
 
             slider_width: None,
@@ -153,8 +157,6 @@ impl<'a> MyParamSlider<'a> {
             // When beginning a drag or dragging normally, reset the memory used to keep track of
             // our granular drag
             self.begin_drag();
-
-            // TODO start looping!
         }
         let widget_size = response.rect.size();
         if let Some(click_pos) = response.interact_pointer_pos() {
@@ -170,6 +172,16 @@ impl<'a> MyParamSlider<'a> {
         }
         if response.drag_stopped() {
             self.end_drag();
+        }
+
+        if response.is_pointer_button_down_on() {
+            self.setter.begin_set_parameter(self.on_param);
+            self.setter.set_parameter(self.on_param, true);
+            self.setter.end_set_parameter(self.on_param);
+        } else {
+            self.setter.begin_set_parameter(self.on_param);
+            self.setter.set_parameter(self.on_param, false);
+            self.setter.end_set_parameter(self.on_param);
         }
 
         // And finally draw the thing
