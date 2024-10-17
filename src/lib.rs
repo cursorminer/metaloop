@@ -257,7 +257,6 @@ impl Plugin for Metaloop {
                 let window_size = screen_rect.size();
 
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
-                    ui.label("Int");
                     ui.add(
                         ui::MyParamSlider::for_param(
                             &params.loop_offset_sixteenths,
