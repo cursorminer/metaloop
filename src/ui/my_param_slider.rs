@@ -9,13 +9,6 @@ use nih_plug_egui::egui::{
 
 use emath::{Pos2, Rangef, Rect};
 
-/// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
-/// noramlized parameter.
-const GRANULAR_DRAG_MULTIPLIER: f32 = 0.0015;
-
-static DRAG_NORMALIZED_START_VALUE_MEMORY_ID: LazyLock<egui::Id> =
-    LazyLock::new(|| egui::Id::new((file!(), 0)));
-
 /// A slider widget similar to [`egui::widgets::Slider`] that knows about NIH-plug parameters ranges
 /// and can get values for it. The slider supports double click and control click to reset,
 /// shift+drag for granular dragging, text value entry by clicking on the value text.

@@ -41,6 +41,7 @@ impl<T> DelayLine<T>
 where
     T: Copy,
     T: Default,
+    T: Clone,
 {
     pub fn new(size: usize) -> DelayLine<T> {
         DelayLine {
@@ -104,6 +105,22 @@ where
         lerp(v0, v1, frac)
     }
 }
+
+#[allow(dead_code)]
+impl<T> Clone for DelayLine<T>
+where
+    T: Clone,
+    T: Copy,
+    T: Default,
+{
+    fn clone(&self) -> Self {
+        DelayLine {
+            buffer: self.buffer.clone(),
+            write_index: self.write_index,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,3 +1,4 @@
+use grain_looper::beats_to_samples;
 use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, widgets, EguiState};
 use std::sync::Arc;
@@ -13,6 +14,7 @@ mod scheduler;
 mod stereo_pair;
 mod test_utils;
 mod ui;
+use delay_line::DelayLine;
 use grain_looper::samples_to_beats;
 use grain_looper::GrainLooper;
 use stereo_pair::StereoPair;
@@ -21,11 +23,21 @@ use stereo_pair::StereoPair;
 // https://github.com/robbert-vdh/nih-plug/blob/master/plugins/examples/gain/src/lib.rs to get
 // started
 
+const GUI_WIDTH: u32 = 800;
+const GUI_HEIGHT: u32 = 600;
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct WaveformBar {
+    min: f32,
+    max: f32,
+}
+
 struct Metaloop {
     params: Arc<MetaloopParams>,
     grain_looper: GrainLooper<StereoPair<f32>>,
     output: StereoPair<f32>,
     sample_rate: f32,
+    waveform_buffer: DelayLine<WaveformBar>,
 }
 
 #[derive(Params)]
@@ -64,11 +76,14 @@ struct MetaloopParams {
 
 impl Default for Metaloop {
     fn default() -> Self {
+        let wave_buffer = DelayLine::new(GUI_WIDTH as usize);
+
         Self {
             params: Arc::new(MetaloopParams::default()),
             grain_looper: GrainLooper::new(44100.0),
             output: StereoPair::default(),
             sample_rate: 44100.0,
+            waveform_buffer: wave_buffer,
         }
     }
 }
@@ -99,7 +114,7 @@ impl Default for MetaloopParams {
             loop_offset_sixteenths: IntParam::new(
                 "Offset 16ths",
                 0,
-                IntRange::Linear { min: (0), max: (8) },
+                IntRange::Linear { min: (0), max: (7) },
             ),
 
             fade: FloatParam::new("Fade", 0.02, FloatRange::Linear { min: 0.0, max: 0.1 })
@@ -118,7 +133,7 @@ impl Default for MetaloopParams {
 
             loop_param: BoolParam::new("Loop", false),
             reverse_param: BoolParam::new("Reverse", false),
-            editor_state: EguiState::from_size(800, 600),
+            editor_state: EguiState::from_size(GUI_WIDTH, GUI_HEIGHT),
         }
     }
 }
@@ -208,8 +223,16 @@ impl Plugin for Metaloop {
         let tempo = context.transport().tempo.unwrap() as f32;
         self.grain_looper.set_tempo(tempo);
 
+        // work out how long the UI is in samples
+        let ui_width_beats = 2.0;
+        let ui_width_samples = beats_to_samples(ui_width_beats, tempo, self.sample_rate);
+        let pixels_per_sample = ui_width_samples / GUI_WIDTH as f32;
+        let mut pixel_counter = 0.0;
+
         let beat_time_inc = samples_to_beats(1, tempo, self.sample_rate) as f64;
         let mut beat_time = context.transport().pos_beats().unwrap();
+        let mut min_sample = 1.0;
+        let mut max_sample = -1.0;
 
         // todo: this is utter bollocks, output will be delayed by one sample
         for channel_samples in buffer.iter_samples() {
@@ -232,6 +255,25 @@ impl Plugin for Metaloop {
 
             self.output = self.grain_looper.tick(input, beat_time);
             beat_time = beat_time + beat_time_inc;
+
+            let mono_sample = (input.left + input.right) * 0.5;
+            if mono_sample < min_sample {
+                min_sample = mono_sample;
+            }
+            if mono_sample > max_sample {
+                max_sample = mono_sample;
+            }
+
+            pixel_counter = pixel_counter + pixels_per_sample;
+            if pixel_counter > 1.0 {
+                self.waveform_buffer.tick(WaveformBar {
+                    min: min_sample,
+                    max: max_sample,
+                });
+                min_sample = 1.0;
+                max_sample = -1.0;
+                pixel_counter = pixel_counter - 1.0;
+            }
         }
 
         // if the transport has been stopped, stop the loop and reset the block
@@ -248,6 +290,8 @@ impl Plugin for Metaloop {
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
+        let wave = self.waveform_buffer.clone();
+        // this is bad
         create_egui_editor(
             self.params.editor_state.clone(),
             (),
@@ -267,6 +311,7 @@ impl Plugin for Metaloop {
                         .with_width(window_size.x)
                         .with_height(window_size.y),
                     );
+                    // ui.add(ui::WaveformDisplay::with_wave(&wave).with_width(window_size.x).with_height(100);
                 });
             },
         )
