@@ -1,6 +1,6 @@
 // This handles the actual events that control what the looper does
 // according to the beat time
-use crate::{grain_looper::beats_to_samples, scheduler::Scheduler};
+use crate::scheduler::Scheduler;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopEvent {

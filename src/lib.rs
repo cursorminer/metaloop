@@ -1,4 +1,5 @@
-use nih_plug::{prelude::*, wrapper::vst3::vst3_sys::vst::LegacyMidiCCOutEvent};
+use nih_plug::prelude::*;
+use nih_plug_egui::{create_egui_editor, egui, widgets, EguiState};
 use std::sync::Arc;
 
 mod countdown_trigger;
