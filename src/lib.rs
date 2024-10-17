@@ -12,6 +12,7 @@ mod ramped_value;
 mod scheduler;
 mod stereo_pair;
 mod test_utils;
+mod ui;
 use grain_looper::samples_to_beats;
 use grain_looper::GrainLooper;
 use stereo_pair::StereoPair;
@@ -254,7 +255,7 @@ impl Plugin for Metaloop {
             move |egui_ctx, setter, _state| {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.label("Int");
-                    ui.add(widgets::ParamSlider::for_param(
+                    ui.add(ui::MyParamSlider::for_param(
                         &params.loop_offset_sixteenths,
                         setter,
                     ));
