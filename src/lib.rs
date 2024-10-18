@@ -1,6 +1,6 @@
 use grain_looper::beats_to_samples;
 use nih_plug::prelude::*;
-use nih_plug_egui::{create_egui_editor, egui, widgets, EguiState};
+use nih_plug_egui::{create_egui_editor, egui, EguiState};
 use std::sync::Arc;
 
 mod countdown_trigger;
@@ -18,6 +18,7 @@ use delay_line::DelayLine;
 use grain_looper::samples_to_beats;
 use grain_looper::GrainLooper;
 use stereo_pair::StereoPair;
+use ui::waveform_display::WaveformBar;
 
 // This is a shortened version of the gain example with most comments removed, check out
 // https://github.com/robbert-vdh/nih-plug/blob/master/plugins/examples/gain/src/lib.rs to get
@@ -25,12 +26,8 @@ use stereo_pair::StereoPair;
 
 const GUI_WIDTH: u32 = 800;
 const GUI_HEIGHT: u32 = 600;
-
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-struct WaveformBar {
-    min: f32,
-    max: f32,
-}
+const WAVEFORM_HEIGHT: f32 = 100.0;
+const XY_PAD_HEIGHT: f32 = 400.0;
 
 struct Metaloop {
     params: Arc<MetaloopParams>,
@@ -291,6 +288,7 @@ impl Plugin for Metaloop {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
         let wave = self.waveform_buffer.clone();
+        let border = 4.0;
         // this is bad
         create_egui_editor(
             self.params.editor_state.clone(),
@@ -302,16 +300,21 @@ impl Plugin for Metaloop {
 
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.add(
+                        ui::WaveformDisplay::with_wave(&wave)
+                            .with_width(window_size.x)
+                            .with_height(WAVEFORM_HEIGHT),
+                    );
+
+                    ui.add(
                         ui::MyParamSlider::for_param(
                             &params.loop_offset_sixteenths,
                             &params.loop_length_sixteenths,
                             &params.loop_param,
                             setter,
                         )
-                        .with_width(window_size.x)
-                        .with_height(window_size.y),
+                        .with_width(window_size.x - border * 2.0)
+                        .with_height(XY_PAD_HEIGHT),
                     );
-                    // ui.add(ui::WaveformDisplay::with_wave(&wave).with_width(window_size.x).with_height(100);
                 });
             },
         )

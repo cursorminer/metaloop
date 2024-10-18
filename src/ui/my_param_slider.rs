@@ -1,13 +1,9 @@
-use std::sync::{Arc, LazyLock};
-
 use nih_plug::prelude::{BoolParam, IntParam, IntRange, Param, ParamSetter};
 use nih_plug_egui::widgets::util;
 
-use nih_plug_egui::egui::{
-    self, emath, vec2, CursorIcon, Response, Sense, Stroke, TextStyle, Ui, Vec2, Widget,
-};
+use nih_plug_egui::egui::{self, emath, vec2, CursorIcon, Response, Sense, Ui, Widget};
 
-use emath::{Pos2, Rangef, Rect};
+use emath::{Pos2, Rect};
 
 /// A slider widget similar to [`egui::widgets::Slider`] that knows about NIH-plug parameters ranges
 /// and can get values for it. The slider supports double click and control click to reset,
@@ -220,14 +216,13 @@ impl<'a> MyParamSlider<'a> {
             // draw a square on the active grid square
             let min_x = x_steps as f32 * self.normalized_value_x() as f32 * x_grid_size
                 + response.rect.min.x;
-            println!("min_x {}", min_x);
             let max_x = min_x + x_grid_size;
 
             let min_y = y_steps as f32 * self.normalized_value_y() as f32 * y_grid_size
                 + response.rect.min.y;
             let max_y = min_y + y_grid_size;
 
-            if let Some(click_pos) = self.click_pos {
+            if let Some(_) = self.click_pos {
                 ui.painter().rect_filled(
                     Rect {
                         min: Pos2 { x: min_x, y: min_y },
