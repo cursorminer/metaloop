@@ -87,6 +87,9 @@ impl LoopScheduler {
         }
 
         // otherwise, the next grid interval has changed and we need to reschedule some things
+        // - the current stop grain
+        // - the next grain start
+        // - the fade to dry if its there
         self.scheduler.clear();
 
         if next_new_grid_interval < next_old_grid_interval {
@@ -109,6 +112,9 @@ impl LoopScheduler {
 
         self.scheduler
             .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
+        // fade out the dry signal, if it's already faded out this will do no harm
+        self.scheduler
+            .schedule_event(next_new_grid_interval, LoopEvent::FadeOutDry);
         self.grid_interval = new_interval_beats;
     }
 

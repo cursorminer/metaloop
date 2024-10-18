@@ -129,6 +129,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     // how long the loop is
+    // if a grid change happens on the same sample as a loop start, we need to ensure that the grid change occurs first
     pub fn set_grid(&mut self, duration_beats: f32) {
         assert!(
             beats_to_samples(duration_beats, self.tempo, self.sample_rate) < MAX_LOOP_LENGTH as f32
