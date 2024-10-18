@@ -30,6 +30,30 @@ const GUI_HEIGHT: u32 = 600;
 const WAVEFORM_HEIGHT: f32 = 100.0;
 const XY_PAD_HEIGHT: f32 = 400.0;
 
+const SYNCED_RATES: [(i32, i32); 16] = [
+    (1, 64),
+    (1, 48),
+    (1, 32),
+    (1, 24),
+    (1, 16),
+    (1, 12),
+    (1, 8),
+    (1, 6),
+    (3, 16),
+    (1, 4),
+    (5, 16),
+    (1, 3),
+    (3, 8),
+    (1, 2),
+    (3, 4),
+    (1, 1),
+];
+
+pub fn grid_size_for_int_control(value: i32) -> f32 {
+    let (num, denom) = SYNCED_RATES[value as usize];
+    4.0 * num as f32 / denom as f32
+}
+
 struct Metaloop {
     params: Arc<MetaloopParams>,
     grain_looper: GrainLooper<StereoPair<f32>>,
@@ -107,7 +131,10 @@ impl Default for MetaloopParams {
             loop_length_sixteenths: IntParam::new(
                 "Len 16ths",
                 4,
-                IntRange::Linear { min: (1), max: (8) },
+                IntRange::Linear {
+                    min: (0),
+                    max: (15),
+                },
             ),
 
             loop_offset: FloatParam::new("Offset", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
@@ -332,8 +359,9 @@ impl Metaloop {
     pub fn update_params(&mut self) {
         // self.grain_looper.set_grid(self.params.loop_length.value());
 
-        self.grain_looper
-            .set_grid((self.params.loop_length_sixteenths.value() as f32) / 4.0);
+        self.grain_looper.set_grid(grid_size_for_int_control(
+            self.params.loop_length_sixteenths.value(),
+        ));
         self.grain_looper
             .set_loop_offset(self.params.loop_offset_sixteenths.value() as f32 / 4.0);
         self.grain_looper

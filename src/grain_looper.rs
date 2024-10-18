@@ -7,7 +7,7 @@ use crate::stereo_pair::AudioSampleOps;
 
 // how much of the buffer we allow to scrub through
 // TODO set these to be seconds
-const LOOPABLE_REGION_LENGTH: usize = 100000;
+const LOOPABLE_REGION_LENGTH: usize = 200000;
 const MAX_FADE_TIME_SAMPLES: usize = 10000;
 const MAX_LOOP_LENGTH: usize = LOOPABLE_REGION_LENGTH / 2;
 
