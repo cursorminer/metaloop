@@ -30,18 +30,6 @@ pub struct GrainLooper<T: AudioSampleOps> {
     tempo: f32,
 }
 
-pub fn seconds_to_beats(seconds: f32, tempo: f32) -> f32 {
-    seconds * tempo / 60.0
-}
-
-pub fn beats_to_seconds(beats: f32, tempo: f32) -> f32 {
-    beats * 60.0 / tempo
-}
-
-pub fn seconds_to_samples(seconds: f32, sample_rate: f32) -> usize {
-    (seconds * sample_rate) as usize
-}
-
 pub fn samples_to_beats(samples: usize, tempo: f32, sample_rate: f32) -> f32 {
     samples as f32 / sample_rate * tempo / 60.0
 }

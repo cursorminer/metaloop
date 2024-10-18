@@ -1,16 +1,8 @@
-use std::sync::{Arc, LazyLock};
-
-use nih_plug::prelude::{BoolParam, IntParam, IntRange, Param, ParamSetter};
-use nih_plug_egui::widgets::util;
-
-use nih_plug_egui::egui::{
-    self, emath, vec2, CursorIcon, Response, Sense, Stroke, TextStyle, Ui, Vec2, Widget,
-};
+use nih_plug_egui::egui::{emath, vec2, Response, Sense, Ui, Widget};
 
 use rand::Rng;
 
 use crate::delay_line::DelayLine;
-use emath::{Pos2, Rangef, Rect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct WaveformBar {

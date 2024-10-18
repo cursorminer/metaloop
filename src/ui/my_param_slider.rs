@@ -1,7 +1,6 @@
 use nih_plug::prelude::{BoolParam, IntParam, IntRange, Param, ParamSetter};
-use nih_plug_egui::widgets::util;
 
-use nih_plug_egui::egui::{self, emath, vec2, CursorIcon, Response, Sense, Ui, Widget};
+use nih_plug_egui::egui::{emath, vec2, CursorIcon, Response, Sense, Ui, Widget};
 
 use emath::{Pos2, Rect};
 
@@ -24,9 +23,6 @@ pub struct MyParamSlider<'a> {
     slider_width: Option<f32>,
     slider_height: Option<f32>,
 
-    /// Will be set in the `ui()` function so we can request keyboard input focus on Alt+click.
-    keyboard_focus_id: Option<egui::Id>,
-
     click_pos: Option<emath::Pos2>,
 }
 
@@ -48,8 +44,6 @@ impl<'a> MyParamSlider<'a> {
 
             slider_width: None,
             slider_height: None,
-
-            keyboard_focus_id: None,
 
             click_pos: None,
         }
@@ -79,21 +73,6 @@ impl<'a> MyParamSlider<'a> {
 
     fn normalized_value_y(&self) -> f32 {
         self.y_param.modulated_normalized_value()
-    }
-
-    fn string_value_x(&self) -> String {
-        self.x_param.to_string()
-    }
-
-    fn string_value_y(&self) -> String {
-        self.y_param.to_string()
-    }
-
-    /// Enable the keyboard entry part of the widget.
-    fn begin_keyboard_entry(&self, ui: &Ui) {}
-
-    fn keyboard_entry_active(&self, ui: &Ui) -> bool {
-        ui.memory(|mem| mem.has_focus(self.keyboard_focus_id.unwrap()))
     }
 
     fn begin_drag(&self) {

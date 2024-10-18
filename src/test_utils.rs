@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub fn all_near(a: &Vec<f32>, b: &Vec<f32>, epsilon: f32) {
     if a.len() != b.len() {
         println!("");
