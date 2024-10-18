@@ -76,8 +76,8 @@ struct MetaloopParams {
     #[id = "length-sixteenths"]
     pub loop_length_sixteenths: IntParam,
 
-    #[id = "loop-offset"]
-    pub loop_offset: FloatParam,
+    #[id = "loop-offset-beats"]
+    pub loop_offset_beats: FloatParam,
 
     #[id = "loop-offset-sixteenths"]
     pub loop_offset_sixteenths: IntParam,
@@ -137,8 +137,12 @@ impl Default for MetaloopParams {
                 },
             ),
 
-            loop_offset: FloatParam::new("Offset", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
-                .with_unit(" s"),
+            loop_offset_beats: FloatParam::new(
+                "Offset",
+                0.1,
+                FloatRange::Linear { min: 0.0, max: 4.0 },
+            )
+            .with_unit(" s"),
 
             loop_offset_sixteenths: IntParam::new(
                 "Offset 16ths",
@@ -344,7 +348,7 @@ impl Plugin for Metaloop {
 
                     ui.add(
                         ui::MyParamSlider::for_param(
-                            &params.loop_offset_sixteenths,
+                            &params.loop_offset_beats,
                             &params.loop_length_sixteenths,
                             &params.loop_param,
                             setter,
@@ -366,7 +370,7 @@ impl Metaloop {
             self.params.loop_length_sixteenths.value(),
         ));
         self.grain_looper
-            .set_loop_offset((15 - self.params.loop_offset_sixteenths.value()) as f32 / 4.0);
+            .set_loop_offset(self.params.loop_offset_beats.value());
         self.grain_looper
             .set_reverse(self.params.reverse_param.value());
 
