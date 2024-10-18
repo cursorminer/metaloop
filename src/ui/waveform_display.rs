@@ -1,6 +1,5 @@
-use nih_plug_egui::egui::{emath, vec2, Response, Sense, Ui, Widget};
-
-use rand::Rng;
+use nih_plug::wrapper::vst3::vst3_sys::vst::get_green;
+use nih_plug_egui::egui::{emath, vec2, Color32, Response, Sense, Stroke, Ui, Widget};
 
 use crate::delay_line::DelayLine;
 
@@ -8,6 +7,19 @@ use crate::delay_line::DelayLine;
 pub struct WaveformBar {
     pub min: f32,
     pub max: f32,
+}
+
+pub fn scale_linear(
+    input: f32,
+    input_min: f32,
+    input_max: f32,
+    output_min: f32,
+    output_max: f32,
+) -> f32 {
+    let input_range = input_max - input_min;
+    let output_range = output_max - output_min;
+    let scaled = (input - input_min) / input_range;
+    output_min + (scaled * output_range)
 }
 
 #[must_use = "You should put this widget in an ui with `ui.add(widget);`"]
@@ -38,17 +50,21 @@ impl<'a> WaveformDisplay<'a> {
     fn wave_ui(&mut self, ui: &Ui, response: &mut Response) {
         ui.painter()
             .rect_filled(response.rect, 0.0, ui.visuals().widgets.inactive.bg_fill);
-
+        // green color
+        let color = Color32::from_rgb(0, 255, 0);
         for x in 0..response.rect.width() as usize {
-            let rand1 = rand::thread_rng().gen_range(0..20) as f32;
-            let rand2 = rand::thread_rng().gen_range(0..20) as f32;
+            let bar = self.waveform_buffer.read(x);
+            let top = response.rect.min.y
+                + scale_linear(bar.max, -1.0, 1.0, response.rect.min.y, response.rect.max.y);
+            let bottom = response.rect.min.y
+                + scale_linear(bar.min, -1.0, 1.0, response.rect.min.y, response.rect.max.y);
             ui.painter().vline(
-                x as f32,
+                x as f32 + response.rect.min.x,
                 emath::Rangef {
-                    max: response.rect.min.y + rand1,
-                    min: response.rect.max.y + rand2,
+                    min: top + 1.0,
+                    max: bottom,
                 },
-                ui.visuals().widgets.active.bg_stroke,
+                Stroke::new(1.0, color),
             );
         }
     }
@@ -61,7 +77,7 @@ impl Widget for WaveformDisplay<'_> {
         let display_height = self.display_height.unwrap_or_else(|| 20.0);
 
         let mut response =
-            ui.allocate_response(vec2(display_width, display_height), Sense::click_and_drag());
+            ui.allocate_response(vec2(display_width, display_height), Sense::hover());
         self.wave_ui(ui, &mut response);
 
         response

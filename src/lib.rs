@@ -1,6 +1,7 @@
 use grain_looper::beats_to_samples;
 use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, EguiState};
+use rand::Rng;
 use std::sync::Arc;
 
 mod countdown_trigger;
@@ -35,6 +36,8 @@ struct Metaloop {
     output: StereoPair<f32>,
     sample_rate: f32,
     waveform_buffer: DelayLine<WaveformBar>,
+    min_sample: f32,
+    max_sample: f32,
 }
 
 #[derive(Params)]
@@ -81,6 +84,8 @@ impl Default for Metaloop {
             output: StereoPair::default(),
             sample_rate: 44100.0,
             waveform_buffer: wave_buffer,
+            min_sample: 1.0,
+            max_sample: -1.0,
         }
     }
 }
@@ -223,13 +228,13 @@ impl Plugin for Metaloop {
         // work out how long the UI is in samples
         let ui_width_beats = 2.0;
         let ui_width_samples = beats_to_samples(ui_width_beats, tempo, self.sample_rate);
-        let pixels_per_sample = ui_width_samples / GUI_WIDTH as f32;
+
+        // we are accumulating multiple samples for each pixel
+        let pixels_per_sample = GUI_WIDTH as f32 / ui_width_samples;
         let mut pixel_counter = 0.0;
 
         let beat_time_inc = samples_to_beats(1, tempo, self.sample_rate) as f64;
         let mut beat_time = context.transport().pos_beats().unwrap();
-        let mut min_sample = 1.0;
-        let mut max_sample = -1.0;
 
         // todo: this is utter bollocks, output will be delayed by one sample
         for channel_samples in buffer.iter_samples() {
@@ -254,23 +259,24 @@ impl Plugin for Metaloop {
             beat_time = beat_time + beat_time_inc;
 
             let mono_sample = (input.left + input.right) * 0.5;
-            if mono_sample < min_sample {
-                min_sample = mono_sample;
+            if mono_sample < self.min_sample {
+                self.min_sample = mono_sample;
             }
-            if mono_sample > max_sample {
-                max_sample = mono_sample;
+            if mono_sample > self.max_sample {
+                self.max_sample = mono_sample;
             }
 
-            pixel_counter = pixel_counter + pixels_per_sample;
             if pixel_counter > 1.0 {
                 self.waveform_buffer.tick(WaveformBar {
-                    min: min_sample,
-                    max: max_sample,
+                    min: self.min_sample,
+                    max: self.max_sample,
                 });
-                min_sample = 1.0;
-                max_sample = -1.0;
+
+                self.min_sample = 1.0;
+                self.max_sample = -1.0;
                 pixel_counter = pixel_counter - 1.0;
             }
+            pixel_counter = pixel_counter + pixels_per_sample;
         }
 
         // if the transport has been stopped, stop the loop and reset the block
@@ -288,6 +294,7 @@ impl Plugin for Metaloop {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
         let wave = self.waveform_buffer.clone();
+
         let border = 4.0;
         // this is bad
         create_egui_editor(
@@ -301,7 +308,7 @@ impl Plugin for Metaloop {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.add(
                         ui::WaveformDisplay::with_wave(&wave)
-                            .with_width(window_size.x)
+                            .with_width(window_size.x - border * 2.0)
                             .with_height(WAVEFORM_HEIGHT),
                     );
 

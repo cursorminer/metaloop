@@ -131,9 +131,12 @@ impl<'a> MyParamSlider<'a> {
         let widget_size = response.rect.size();
         if let Some(click_pos) = response.interact_pointer_pos() {
             // call set_normalized_value with normalized position
+            let actual_click_pos = click_pos - response.rect.min;
 
-            self.set_normalized_value(click_pos.x / widget_size.x, click_pos.y / widget_size.y);
-
+            self.set_normalized_value(
+                actual_click_pos.x / widget_size.x,
+                actual_click_pos.y / widget_size.y,
+            );
             self.click_pos = response.interact_pointer_pos();
         }
         if response.double_clicked() {
