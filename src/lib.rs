@@ -143,7 +143,10 @@ impl Default for MetaloopParams {
             loop_offset_sixteenths: IntParam::new(
                 "Offset 16ths",
                 0,
-                IntRange::Linear { min: (0), max: (7) },
+                IntRange::Linear {
+                    min: (0),
+                    max: (15),
+                },
             ),
 
             fade: FloatParam::new("Fade", 0.02, FloatRange::Linear { min: 0.0, max: 0.1 })
@@ -363,7 +366,7 @@ impl Metaloop {
             self.params.loop_length_sixteenths.value(),
         ));
         self.grain_looper
-            .set_loop_offset(self.params.loop_offset_sixteenths.value() as f32 / 4.0);
+            .set_loop_offset((15 - self.params.loop_offset_sixteenths.value()) as f32 / 4.0);
         self.grain_looper
             .set_reverse(self.params.reverse_param.value());
 
