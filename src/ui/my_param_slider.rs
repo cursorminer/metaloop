@@ -265,12 +265,11 @@ impl<'a> MyParamSlider<'a> {
             self.end_drag();
         }
 
-        // TODO this is sending zillions of messages, stop it from doing that
-        if response.is_pointer_button_down_on() {
+        if response.is_pointer_button_down_on() && !self.on_param.value() {
             self.setter.begin_set_parameter(self.on_param);
             self.setter.set_parameter(self.on_param, true);
             self.setter.end_set_parameter(self.on_param);
-        } else {
+        } else if !response.is_pointer_button_down_on() && self.on_param.value() {
             self.setter.begin_set_parameter(self.on_param);
             self.setter.set_parameter(self.on_param, false);
             self.setter.end_set_parameter(self.on_param);

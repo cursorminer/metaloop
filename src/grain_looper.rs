@@ -219,6 +219,18 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         let looped = self.grain_player.tick(input);
 
         let dry_level = self.dry_ramp.tick();
+        // make some assertions about the state of grain player
+        // if we're looping then there should always be at least one grain playing
+        // TODO this assert does indeed fire: why?
+        if dry_level == 0.0 && self.grain_player.num_playing_grains() == 0 {
+            debug_assert!(
+                false,
+                "Grain player is in an inconsistent state, dry_level: {}, num_playing_grains: {}",
+                dry_level,
+                self.grain_player.num_playing_grains()
+            );
+        }
+
         looped + dry * dry_level as f32
     }
 
