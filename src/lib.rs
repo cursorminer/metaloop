@@ -1,7 +1,6 @@
 use grain_looper::beats_to_samples;
 use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, EguiState};
-use rand::Rng;
 use std::sync::Arc;
 
 mod countdown_trigger;
@@ -401,7 +400,7 @@ impl Vst3Plugin for Metaloop {
 
     // And also don't forget to change these categories
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
-        &[Vst3SubCategory::Fx, Vst3SubCategory::Dynamics];
+        &[Vst3SubCategory::Fx, Vst3SubCategory::Delay];
 }
 
 nih_export_clap!(Metaloop);

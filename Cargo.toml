@@ -26,7 +26,6 @@ nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", package =
 atomic_float = "0.1"
 approx = "0.5.1"
 num-traits = "0.2"
-rand = "0.8"
 
 [profile.release]
 lto = "thin"

@@ -1,4 +1,3 @@
-use nih_plug::wrapper::vst3::vst3_sys::vst::get_green;
 use nih_plug_egui::egui::{emath, vec2, Color32, Response, Sense, Stroke, Ui, Widget};
 
 use crate::delay_line::DelayLine;
