@@ -88,10 +88,6 @@ impl<'a> MyParamSlider<'a> {
         self
     }
 
-    fn plain_value_x(&self) -> f32 {
-        self.offset_param.modulated_plain_value()
-    }
-
     fn plain_value_y(&self) -> <nih_plug::prelude::IntParam as nih_plug::prelude::Param>::Plain {
         self.unnormalize(&self.y_param.range(), self.normalized_value_y())
     }
@@ -129,14 +125,6 @@ impl<'a> MyParamSlider<'a> {
     fn num_offset_steps(&self, y_index: i32) -> i32 {
         let quantization_step = self.offset_quant_for_loop_length(y_index);
         (NUM_BEATS_X / quantization_step).floor() as i32 + 1
-    }
-
-    fn grid_x_to_norm(&self, x: f32, response: &Response) -> f32 {
-        (x - response.rect.min.x) / response.rect.size().x
-    }
-
-    fn grid_y_to_norm(&self, y: f32, response: &Response) -> f32 {
-        (y - response.rect.min.y) / response.rect.size().y
     }
 
     // set the normalized offset value
