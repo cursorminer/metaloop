@@ -52,7 +52,6 @@ pub fn grid_size_for_int_control(value: i32) -> f32 {
 struct Metaloop {
     params: Arc<MetaloopParams>,
     grain_looper: GrainLooper<StereoPair<f32>>,
-    output: StereoPair<f32>,
     sample_rate: f32,
     waveform_buffer: DelayLine<WaveformBar>,
     min_sample: f32,
@@ -97,7 +96,6 @@ impl Default for Metaloop {
         Self {
             params: Arc::new(MetaloopParams::default()),
             grain_looper: GrainLooper::new(44100.0),
-            output: StereoPair::default(),
             sample_rate: 44100.0,
             waveform_buffer: wave_buffer,
             min_sample: 1.0,
@@ -262,27 +260,17 @@ impl Plugin for Metaloop {
         let beat_time_inc = samples_to_beats(1, tempo, self.sample_rate) as f64;
         let mut beat_time = context.transport().pos_beats().unwrap();
 
-        // todo: this is utter bollocks, output will be delayed by one sample
-        for channel_samples in buffer.iter_samples() {
-            let _num_samples = channel_samples.len();
+        for mut channel_samples in buffer.iter_samples() {
+            let input = StereoPair::new(
+                *channel_samples.get_mut(0).unwrap(),
+                *channel_samples.get_mut(1).unwrap(),
+            );
 
-            let mut input: StereoPair<f32> = StereoPair::default();
-            let mut left = true;
+            let output = self.grain_looper.tick(input, beat_time);
+            beat_time += beat_time_inc;
 
-            let samples = channel_samples.into_iter();
-            for sample in samples {
-                if left {
-                    input.left = sample.clone();
-                    *sample = self.output.left();
-                } else {
-                    input.right = sample.clone();
-                    *sample = self.output.right();
-                }
-                left = false;
-            }
-
-            self.output = self.grain_looper.tick(input, beat_time);
-            beat_time = beat_time + beat_time_inc;
+            *channel_samples.get_mut(0).unwrap() = output.left();
+            *channel_samples.get_mut(1).unwrap() = output.right();
 
             let mono_sample = (input.left + input.right) * 0.5;
             if mono_sample < self.min_sample {
