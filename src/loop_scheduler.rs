@@ -1,6 +1,7 @@
 // This handles the actual events that control what the looper does
 // according to the beat time
-use crate::scheduler::Scheduler;
+use arrayvec::ArrayVec;
+use crate::scheduler::{Scheduler, MAX_EVENTS_PER_TICK};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopEvent {
@@ -167,7 +168,7 @@ impl LoopScheduler {
             .schedule_event(self.current_song_time, LoopEvent::FadeInDry);
     }
 
-    pub fn tick(&mut self, beat_time: f32) -> Vec<LoopEvent> {
+    pub fn tick(&mut self, beat_time: f32) -> ArrayVec<LoopEvent, MAX_EVENTS_PER_TICK> {
         if beat_time < self.current_song_time {
             // we've moved back in time, now what?
             self.current_song_time = beat_time;
@@ -177,16 +178,14 @@ impl LoopScheduler {
         self.current_song_time = beat_time;
 
         let new_events = self.scheduler.tick(beat_time);
-        let mut returned_events = vec![];
+        let mut returned_events = ArrayVec::new();
         for event in new_events {
             match event {
                 LoopEvent::NextLoop => {
-                    // TODO don't push to the vec, as it allocates
                     returned_events.push(LoopEvent::StartGrain {
                         duration: self.grid_interval,
                     });
                     // schedule the next loop
-
                     self.scheduler
                         .schedule_event(self.next_grid(false), LoopEvent::NextLoop);
                 }
@@ -252,30 +251,30 @@ mod tests {
         let grid = 1.0;
 
         let out0 = scheduler.tick(0.0);
-        assert_eq!(out0, vec![]);
+        assert_eq!(out0.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid);
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
         assert_eq!(
-            out1,
-            vec![
+            out1.as_slice(),
+            &[
                 LoopEvent::StartGrain { duration: grid },
                 LoopEvent::FadeOutDry
             ]
         );
 
         let out15 = scheduler.tick(1.5);
-        assert_eq!(out15, vec![]);
+        assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
 
         let out2 = scheduler.tick(2.0);
-        assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid }]);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: grid }]);
 
         scheduler.stop_looping_on_next_grid();
         let out2 = scheduler.tick(3.0);
-        assert_eq!(out2, vec![LoopEvent::StopGrain, LoopEvent::FadeInDry]);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StopGrain, LoopEvent::FadeInDry]);
         let out9 = scheduler.tick(9.0);
-        assert_eq!(out9, vec![]);
+        assert_eq!(out9.as_slice(), &[] as &[LoopEvent]);
     }
 
     #[test]
@@ -289,30 +288,30 @@ mod tests {
         let grid = 1.0;
 
         let out0 = scheduler.tick(0.0);
-        assert_eq!(out0, vec![]);
+        assert_eq!(out0.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid);
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
         assert_eq!(
-            out1,
-            vec![
+            out1.as_slice(),
+            &[
                 LoopEvent::StartGrain { duration: grid },
                 LoopEvent::FadeOutDry
             ]
         );
 
         let out15 = scheduler.tick(1.5);
-        assert_eq!(out15, vec![]);
+        assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
 
         let out2 = scheduler.tick(2.0);
-        assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid }]);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: grid }]);
 
         scheduler.stop_looping_on_next_grid();
         let out2 = scheduler.tick(3.0);
-        assert_eq!(out2, vec![LoopEvent::StopGrain, LoopEvent::FadeInDry]);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StopGrain, LoopEvent::FadeInDry]);
         let out9 = scheduler.tick(9.0);
-        assert_eq!(out9, vec![]);
+        assert_eq!(out9.as_slice(), &[] as &[LoopEvent]);
     }
 
     #[test]
@@ -324,41 +323,42 @@ mod tests {
         let grid2 = 0.5;
 
         let out0 = scheduler.tick(0.0);
-        assert_eq!(out0, vec![]);
+        assert_eq!(out0.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid1);
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
         assert_eq!(
-            out1,
-            vec![
+            out1.as_slice(),
+            &[
                 LoopEvent::StartGrain { duration: grid1 },
                 LoopEvent::FadeOutDry
             ]
         );
 
         let out15 = scheduler.tick(1.5);
-        assert_eq!(out15, vec![]);
+        assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
 
         let out2 = scheduler.tick(2.0);
-        assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid1 }]);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: grid1 }]);
 
         let out225 = scheduler.tick(2.25);
-        assert_eq!(out225, vec![]);
+        assert_eq!(out225.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid2);
 
         // the next loop starts at 2.5, the existing one is stopped
         let out25 = scheduler.tick(2.5);
         assert_eq!(
-            out25,
-            vec![
+            out25.as_slice(),
+            &[
                 LoopEvent::StopGrain,
-                LoopEvent::StartGrain { duration: grid2 }
+                LoopEvent::StartGrain { duration: grid2 },
+                LoopEvent::FadeOutDry
             ]
         );
 
         let out3 = scheduler.tick(3.0);
-        assert_eq!(out3, vec![LoopEvent::StartGrain { duration: grid2 }]);
+        assert_eq!(out3.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
     }
 
     #[test]
@@ -371,27 +371,27 @@ mod tests {
         let grid2 = 4.0;
 
         let out0 = scheduler.tick(0.0);
-        assert_eq!(out0, vec![]);
+        assert_eq!(out0.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid1);
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
         assert_eq!(
-            out1,
-            vec![
+            out1.as_slice(),
+            &[
                 LoopEvent::StartGrain { duration: grid1 },
                 LoopEvent::FadeOutDry
             ]
         );
 
         let out15 = scheduler.tick(1.5);
-        assert_eq!(out15, vec![]);
+        assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
 
         let out2 = scheduler.tick(2.0);
-        assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid1 }]);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: grid1 }]);
 
         let out225 = scheduler.tick(2.25);
-        assert_eq!(out225, vec![]);
+        assert_eq!(out225.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid2);
 
         // when the short loop stops, we get a "legato" grain that takes us to the next interval
@@ -399,8 +399,8 @@ mod tests {
         // legato grain
         let out25 = scheduler.tick(3.0);
         assert_eq!(
-            out25,
-            vec![LoopEvent::StartLegatoGrain {
+            out25.as_slice(),
+            &[LoopEvent::StartLegatoGrain {
                 duration: 1.0,
                 offset_reduction: 3.0
             }]
@@ -408,11 +408,14 @@ mod tests {
 
         // then the new loop starts
         let out4 = scheduler.tick(4.0);
-        assert_eq!(out4, vec![LoopEvent::StartGrain { duration: grid2 }]);
+        assert_eq!(
+            out4.as_slice(),
+            &[LoopEvent::StartGrain { duration: grid2 }, LoopEvent::FadeOutDry]
+        );
 
         // and continues
         let out5 = scheduler.tick(8.0);
-        assert_eq!(out5, vec![LoopEvent::StartGrain { duration: grid2 }]);
+        assert_eq!(out5.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
     }
 
     #[test]
@@ -424,37 +427,37 @@ mod tests {
         let grid2 = 4.0;
 
         let out0 = scheduler.tick(0.0);
-        assert_eq!(out0, vec![]);
+        assert_eq!(out0.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid1);
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
         assert_eq!(
-            out1,
-            vec![
+            out1.as_slice(),
+            &[
                 LoopEvent::StartGrain { duration: grid1 },
                 LoopEvent::FadeOutDry
             ]
         );
 
         let out15 = scheduler.tick(1.5);
-        assert_eq!(out15, vec![]);
+        assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
 
         let out2 = scheduler.tick(2.0);
-        assert_eq!(out2, vec![LoopEvent::StartGrain { duration: grid1 }]);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: grid1 }]);
 
         let out3 = scheduler.tick(3.0);
-        assert_eq!(out3, vec![LoopEvent::StartGrain { duration: grid1 }]);
+        assert_eq!(out3.as_slice(), &[LoopEvent::StartGrain { duration: grid1 }]);
 
         scheduler.tick(3.8);
         scheduler.set_grid_interval(grid2);
 
         // then the new loop starts
         let out4 = scheduler.tick(4.0);
-        assert_eq!(out4, vec![LoopEvent::StartGrain { duration: grid2 }]);
+        assert_eq!(out4.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
 
         // and continues
         let out8 = scheduler.tick(8.0);
-        assert_eq!(out8, vec![LoopEvent::StartGrain { duration: grid2 }]);
+        assert_eq!(out8.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
     }
 }
