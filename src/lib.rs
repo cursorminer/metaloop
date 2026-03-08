@@ -366,7 +366,7 @@ impl Metaloop {
 }
 
 impl ClapPlugin for Metaloop {
-    const CLAP_ID: &'static str = "com.your-domain.metaloop";
+    const CLAP_ID: &'static str = "org.cursorminer.metaloop";
     const CLAP_DESCRIPTION: Option<&'static str> = Some("A looper with scrubbing");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
