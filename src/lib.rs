@@ -20,10 +20,6 @@ use grain_looper::GrainLooper;
 use stereo_pair::StereoPair;
 use ui::waveform_display::WaveformBar;
 
-// This is a shortened version of the gain example with most comments removed, check out
-// https://github.com/robbert-vdh/nih-plug/blob/master/plugins/examples/gain/src/lib.rs to get
-// started
-
 const GUI_WIDTH: u32 = 800;
 const GUI_HEIGHT: u32 = 600;
 const WAVEFORM_HEIGHT: f32 = 100.0;
@@ -65,9 +61,6 @@ struct Metaloop {
 
 #[derive(Params)]
 struct MetaloopParams {
-    /// The parameter's ID is used to identify the parameter in the wrappred plugin API. As long as
-    /// these IDs remain constant, you can rename and reorder these fields as you wish. The
-    /// parameters are exposed to the host in the same order they were defined.
     /// Loop length in seconds
     #[id = "loop-length"]
     pub loop_length: FloatParam,
