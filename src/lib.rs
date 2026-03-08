@@ -3,7 +3,6 @@ use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, EguiState};
 use std::sync::Arc;
 
-mod countdown_trigger;
 mod delay_line;
 mod grain;
 mod grain_looper;
