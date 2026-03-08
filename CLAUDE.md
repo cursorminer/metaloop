@@ -1,12 +1,15 @@
 # Metaloop
 
-A VST3/CLAP audio plugin that creates loop/stutter effects with reversed and pitched loops. Built with Rust using the nih-plug framework and egui for UI.
+A VST3/CLAP audio plugin that creates loop/stutter effects with reversed and pitched loops. 
+It is intended to provide a wide range of effects with an extremely minimal and live 
+jam optimised interface.
+Built with Rust using the nih-plug framework and egui for UI.
 
 ## Architecture
 
 ### Audio Signal Flow
 1. Raw audio is continuously written into a **rolling delay buffer** (DelayLine)
-2. When looping starts, audio is copied to a **static buffer** for indefinite looping
+2. As looping progresses, audio is copied to a **static buffer** for indefinite looping
 3. **Grains** read from the delay buffer at calculated positions with fade envelopes
 4. Grains are mixed with the dry signal using crossfades during loop start/stop
 5. Everything is beat-synchronized via `LoopScheduler` for DAW tempo integration
@@ -53,7 +56,6 @@ cargo check
 
 - **Framework**: nih-plug (git dependency from https://github.com/robbert-vdh/nih-plug.git)
 - **UI**: nih_plug_egui (egui integration for nih-plug)
-- **Plugin formats**: VST3 and CLAP (both exported via macros in lib.rs)
 - **Stereo only**: 2-channel input/output
 - **Beat-synced**: Loop lengths quantized to musical subdivisions (SYNCED_RATES table in lib.rs)
 - **Tests**: Most modules have `#[cfg(test)] mod tests` blocks. Use `test_utils::all_near()` for float comparisons.
