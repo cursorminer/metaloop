@@ -6,11 +6,11 @@ use crate::scheduler::{Scheduler, MAX_EVENTS_PER_TICK};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopEvent {
     StartGrain {
-        duration: f32,
+        duration: f64,
     }, // tell the grain player to start a grain
     StartLegatoGrain {
-        duration: f32,
-        offset_reduction: f32,
+        duration: f64,
+        offset_reduction: f64,
     }, // tell the grain player to start a grain part way thru, in the case where we want an existing grain to continue
     StopGrain,  // stops the grain player
     FadeOutDry, // fade out the dry signal
@@ -19,14 +19,25 @@ pub enum LoopEvent {
 }
 pub struct LoopScheduler {
     scheduler: Scheduler<LoopEvent>,
-    fade_in_time: f32,
-    grid_interval: f32,
-    current_song_time: f32,
-    time_looping_initiated: f32,
+    fade_in_time: f64,
+    grid_interval: f64,
+    current_song_time: f64,
+    time_looping_initiated: f64,
     is_looping: bool,
 }
 
-type BeatTime = f32; // might wanna have f64
+type BeatTime = f64;
+
+// Beat time is now f64 end to end, but the grid interval and fade lead-in
+// ultimately come from f32 parameters. Dividing an f64 song time by an
+// f32-derived grid can leave a value that should sit exactly on a grid boundary
+// an ulp above/below an integer, which would make ceil()/floor() jump a whole
+// grid. This tolerance guards those boundaries so events still fire on the
+// intended sample. It is applied inside the ceil/floor below (rather than by
+// rounding the result back to f32, which would defeat the f64 precision this
+// change exists to preserve) so the pure grid functions stay exact for callers
+// that feed true f64 beat times.
+const GRID_EPSILON: BeatTime = 1e-6;
 
 // for a given song time, find the next grid interval according to the grid interval.
 // The whole grid can be offset so that fades lead up to the grid.
@@ -35,7 +46,7 @@ fn next_grid_in_beats(
     grid_interval: BeatTime,
     grid_offset: BeatTime,
 ) -> BeatTime {
-    ((song_time + grid_offset) / grid_interval).ceil() * grid_interval - grid_offset
+    ((song_time + grid_offset) / grid_interval - GRID_EPSILON).ceil() * grid_interval - grid_offset
 }
 
 fn previous_grid_in_beats(
@@ -43,7 +54,7 @@ fn previous_grid_in_beats(
     grid_interval: BeatTime,
     grid_offset: BeatTime,
 ) -> BeatTime {
-    ((song_time + grid_offset) / grid_interval).floor() * grid_interval - grid_offset
+    ((song_time + grid_offset) / grid_interval + GRID_EPSILON).floor() * grid_interval - grid_offset
 }
 
 impl LoopScheduler {
@@ -65,12 +76,12 @@ impl LoopScheduler {
     }
 
     // set fade lead time in beats
-    pub fn set_fade_lead_in(&mut self, fade_in: f32) {
+    pub fn set_fade_lead_in(&mut self, fade_in: f64) {
         // Do nothing
         self.fade_in_time = fade_in;
     }
 
-    pub fn set_grid_interval(&mut self, new_interval_beats: f32) {
+    pub fn set_grid_interval(&mut self, new_interval_beats: f64) {
         let next_old_grid_interval = self.next_grid(true);
         let next_new_grid_interval = next_grid_in_beats(
             self.current_song_time,
@@ -133,7 +144,7 @@ impl LoopScheduler {
             .schedule_event(next_grid_interval, LoopEvent::FadeOutDry);
     }
 
-    pub fn beats_since_last_grid(&self) -> f32 {
+    pub fn beats_since_last_grid(&self) -> f64 {
         let previous_grid_interval = previous_grid_in_beats(
             self.current_song_time,
             self.grid_interval,
@@ -168,7 +179,7 @@ impl LoopScheduler {
             .schedule_event(self.current_song_time, LoopEvent::FadeInDry);
     }
 
-    pub fn tick(&mut self, beat_time: f32) -> ArrayVec<LoopEvent, MAX_EVENTS_PER_TICK> {
+    pub fn tick(&mut self, beat_time: f64) -> ArrayVec<LoopEvent, MAX_EVENTS_PER_TICK> {
         if beat_time < self.current_song_time {
             // we've moved back in time, now what?
             self.current_song_time = beat_time;
@@ -198,7 +209,7 @@ impl LoopScheduler {
         returned_events
     }
 
-    fn next_grid(&self, include_now: bool) -> f32 {
+    fn next_grid(&self, include_now: bool) -> f64 {
         let eps = if include_now { 0.0 } else { 0.0001 };
         return next_grid_in_beats(
             self.current_song_time + eps,

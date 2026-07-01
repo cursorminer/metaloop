@@ -120,7 +120,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             self.fade_duration_samples,
             self.tempo,
             self.sample_rate,
-        ));
+        ) as f64);
     }
 
     // offset the loop in the buffer, i.e. "scrub"
@@ -134,7 +134,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         assert!(
             beats_to_samples(duration_beats, self.tempo, self.sample_rate) < MAX_LOOP_LENGTH as f32
         );
-        self.loop_scheduler.set_grid_interval(duration_beats);
+        self.loop_scheduler.set_grid_interval(duration_beats as f64);
     }
 
     // note that the loop_start_point_seconds is toward the past, as we want to loop something that has already started
@@ -142,7 +142,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         self.loop_scheduler.start_looping();
 
         let num_samples_to_previous_grid = beats_to_samples(
-            self.loop_scheduler.beats_since_last_grid(),
+            self.loop_scheduler.beats_since_last_grid() as f32,
             self.tempo,
             self.sample_rate,
         ) as usize;
@@ -158,10 +158,10 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         self.is_looping = false;
     }
 
-    fn start_grain(&mut self, duration: usize, offset_reduction: f32) {
+    fn start_grain(&mut self, duration: usize, offset_reduction: f64) {
         self.grain_player.start_grain(Grain::new(
             beats_to_samples(
-                self.loop_offset_beats - offset_reduction,
+                self.loop_offset_beats - offset_reduction as f32,
                 self.tempo,
                 self.sample_rate,
             ) as f32,
@@ -181,13 +181,13 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     pub fn tick(&mut self, input: T, beat_time: f64) -> T {
-        let events = self.loop_scheduler.tick(beat_time as f32);
+        let events = self.loop_scheduler.tick(beat_time);
 
         for event in events {
             match event {
                 LoopEvent::StartGrain { duration } => {
                     self.start_grain(
-                        beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
+                        beats_to_samples(duration as f32, self.tempo, self.sample_rate) as usize,
                         0.0,
                     );
                 }
@@ -196,7 +196,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                     offset_reduction,
                 } => {
                     self.start_grain(
-                        beats_to_samples(duration, self.tempo, self.sample_rate) as usize,
+                        beats_to_samples(duration as f32, self.tempo, self.sample_rate) as usize,
                         offset_reduction,
                     );
                 }

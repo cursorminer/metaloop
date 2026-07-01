@@ -8,7 +8,7 @@ pub const MAX_EVENTS_PER_TICK: usize = 8;
 
 // E is the event type
 pub struct Scheduler<E: Clone + Copy + PartialEq> {
-    events: VecDeque<(f32, E)>,
+    events: VecDeque<(f64, E)>,
 }
 
 #[allow(dead_code)]
@@ -23,7 +23,7 @@ impl<E: Clone + Copy + PartialEq> Scheduler<E> {
         self.clear();
     }
 
-    pub fn schedule_event(&mut self, new_event_time: f32, event: E) {
+    pub fn schedule_event(&mut self, new_event_time: f64, event: E) {
         let previous_event_time = self.events.back().map(|&(t, _)| t).unwrap_or(0.0);
 
         if new_event_time < previous_event_time {
@@ -37,7 +37,7 @@ impl<E: Clone + Copy + PartialEq> Scheduler<E> {
         self.events.push_back((new_event_time, event));
     }
 
-    pub fn tick(&mut self, time: f32) -> ArrayVec<E, MAX_EVENTS_PER_TICK> {
+    pub fn tick(&mut self, time: f64) -> ArrayVec<E, MAX_EVENTS_PER_TICK> {
         let mut events = ArrayVec::new();
         while let Some(&(event_time, ref event)) = self.events.front() {
             if event_time <= time {
