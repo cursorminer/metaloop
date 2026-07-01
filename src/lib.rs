@@ -245,7 +245,7 @@ impl Plugin for Metaloop {
             self.grain_looper.reset();
         }
 
-        let tempo = context.transport().tempo.unwrap() as f32;
+        let tempo = context.transport().tempo.unwrap_or(120.0) as f32;
         self.grain_looper.set_tempo(tempo);
 
         // work out how long the UI is in samples
@@ -257,16 +257,17 @@ impl Plugin for Metaloop {
         let mut pixel_counter = 0.0;
 
         let beat_time_inc = samples_to_beats(1, tempo, self.sample_rate) as f64;
-        let mut beat_time = context.transport().pos_beats().unwrap();
+        let beat_time_start = context.transport().pos_beats().unwrap_or(0.0);
 
-        for mut channel_samples in buffer.iter_samples() {
+        for (sample_idx, mut channel_samples) in buffer.iter_samples().enumerate() {
+            let beat_time = beat_time_start + sample_idx as f64 * beat_time_inc;
+
             let input = StereoPair::new(
                 *channel_samples.get_mut(0).unwrap(),
                 *channel_samples.get_mut(1).unwrap(),
             );
 
             let output = self.grain_looper.tick(input, beat_time);
-            beat_time += beat_time_inc;
 
             *channel_samples.get_mut(0).unwrap() = output.left();
             *channel_samples.get_mut(1).unwrap() = output.right();

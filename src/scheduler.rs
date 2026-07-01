@@ -1,4 +1,5 @@
 use arrayvec::ArrayVec;
+use nih_plug::nih_debug_assert;
 use std::collections::VecDeque;
 
 /// Maximum number of events that can fire on a single tick.
@@ -26,7 +27,8 @@ impl<E: Clone + Copy + PartialEq> Scheduler<E> {
         let previous_event_time = self.events.back().map(|&(t, _)| t).unwrap_or(0.0);
 
         if new_event_time < previous_event_time {
-            eprintln!(
+            nih_debug_assert!(
+                false,
                 "event must be scheduled after previous event, new_event_time: {}, previous_event_time: {}",
                 new_event_time, previous_event_time,
             );
@@ -39,7 +41,10 @@ impl<E: Clone + Copy + PartialEq> Scheduler<E> {
         let mut events = ArrayVec::new();
         while let Some(&(event_time, ref event)) = self.events.front() {
             if event_time <= time {
-                events.push(event.clone());
+                if events.try_push(event.clone()).is_err() {
+                    // no room for more events this tick; leave it queued for next time
+                    break;
+                }
                 self.events.pop_front();
             } else {
                 break;

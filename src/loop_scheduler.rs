@@ -121,7 +121,7 @@ impl LoopScheduler {
 
     // start looping, and return how far we are through the current grid interval
     pub fn start_looping(&mut self) {
-        assert!(!self.is_looping);
+        debug_assert!(!self.is_looping);
         self.is_looping = true;
         self.time_looping_initiated = self.current_song_time;
         let next_grid_interval = self.next_grid(true);
@@ -143,7 +143,7 @@ impl LoopScheduler {
     }
 
     pub fn stop_looping_on_next_grid(&mut self) {
-        assert!(self.is_looping);
+        debug_assert!(self.is_looping);
         self.is_looping = false;
 
         let next_grid_interval = self.next_grid(true);

@@ -1,6 +1,7 @@
 use crate::grain::Grain;
 use crate::grain::WhichBuffer;
 use crate::{delay_line::DelayLine, stereo_pair::AudioSampleOps};
+use nih_plug::nih_debug_assert;
 
 pub const MAX_GRAINS: usize = 10;
 
@@ -72,6 +73,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
                 return;
             }
         }
+        nih_debug_assert!(false, "grain pool full, dropping grain");
     }
 
     pub fn reset(&mut self) {
@@ -100,7 +102,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
                 self.rolling_offset_b = offset_to_loop_start;
             }
             WhichBuffer::Neither => {
-                assert!(false);
+                debug_assert!(false, "start_grains_buffer must be A or B when initiating looping");
             }
         }
 
@@ -117,7 +119,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
                 self.start_grains_buffer = WhichBuffer::A;
             }
             WhichBuffer::Neither => {
-                assert!(false);
+                debug_assert!(false, "start_grains_buffer must be A or B when uninitiating looping");
             }
         }
 
@@ -192,7 +194,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
                     }
                 }
                 WhichBuffer::Neither => {
-                    assert!(false);
+                    debug_assert!(false, "start_grains_buffer must be A or B while looping");
                 }
             }
         }
