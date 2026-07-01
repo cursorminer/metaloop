@@ -4,6 +4,7 @@ use crate::loop_scheduler::LoopEvent;
 use crate::loop_scheduler::LoopScheduler;
 use crate::ramped_value::RampedValue;
 use crate::stereo_pair::AudioSampleOps;
+use crate::time_converter::TimeConverter;
 
 // how much of the buffer we allow to scrub through
 // TODO set these to be seconds
@@ -20,22 +21,13 @@ pub struct GrainLooper<T: AudioSampleOps> {
     grain_player: GrainPlayer<T>,
     loop_scheduler: LoopScheduler,
     is_looping: bool,
-    sample_rate: f32,
+    time: TimeConverter,
 
     loop_offset_beats: f32,
     fade_duration_samples: usize,
     dry_ramp: RampedValue,
     reverse: bool,
     speed: f32,
-    tempo: f32,
-}
-
-pub fn samples_to_beats(samples: usize, tempo: f32, sample_rate: f32) -> f32 {
-    samples as f32 / sample_rate * tempo / 60.0
-}
-
-pub fn beats_to_samples(beats: f32, tempo: f32, sample_rate: f32) -> f32 {
-    beats * 60.0 / tempo * sample_rate
 }
 
 // Loops segments of audio, with the ability to scrub through the loop
@@ -65,7 +57,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             ),
             loop_scheduler: LoopScheduler::new(),
             is_looping: false,
-            sample_rate,
+            time: TimeConverter::new(sample_rate, 120.0),
 
             loop_offset_beats: 0.0,
             fade_duration_samples: 0,
@@ -73,7 +65,6 @@ impl<T: AudioSampleOps> GrainLooper<T> {
             dry_ramp: RampedValue::new(1.0),
             reverse: false,
             speed: 1.0,
-            tempo: 120.0,
         }
     }
 
@@ -91,7 +82,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
-        self.sample_rate = sample_rate;
+        self.time.set_sample_rate(sample_rate);
         self.update_scheduler_fade();
     }
 
@@ -100,15 +91,15 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         // but the offset needs to stay the same number of samples if we are looping.
         // existing grains will have the same duration, so there could be gaps
         if self.is_looping {
-            let ratio = bpm / self.tempo;
+            let ratio = bpm / self.time.tempo();
             self.loop_offset_beats *= ratio;
         }
-        self.tempo = bpm;
+        self.time.set_tempo(bpm);
         self.update_scheduler_fade();
     }
 
     pub fn set_fade_time(&mut self, fade_beats: f32) {
-        let fade_samples = beats_to_samples(fade_beats, self.tempo, self.sample_rate) as usize;
+        let fade_samples = self.time.beats_to_samples(fade_beats) as usize;
         debug_assert!(fade_samples <= MAX_FADE_TIME_SAMPLES);
 
         self.fade_duration_samples = fade_samples.clamp(0, MAX_FADE_TIME_SAMPLES);
@@ -116,11 +107,9 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     fn update_scheduler_fade(&mut self) {
-        self.loop_scheduler.set_fade_lead_in(samples_to_beats(
-            self.fade_duration_samples,
-            self.tempo,
-            self.sample_rate,
-        ) as f64);
+        self.loop_scheduler.set_fade_lead_in(
+            self.time.samples_to_beats(self.fade_duration_samples) as f64
+        );
     }
 
     // offset the loop in the buffer, i.e. "scrub"
@@ -131,9 +120,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     // how long the loop is
     // if a grid change happens on the same sample as a loop start, we need to ensure that the grid change occurs first
     pub fn set_grid(&mut self, duration_beats: f32) {
-        assert!(
-            beats_to_samples(duration_beats, self.tempo, self.sample_rate) < MAX_LOOP_LENGTH as f32
-        );
+        assert!(self.time.beats_to_samples(duration_beats) < MAX_LOOP_LENGTH as f32);
         self.loop_scheduler.set_grid_interval(duration_beats as f64);
     }
 
@@ -141,11 +128,10 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     pub fn start_looping(&mut self) {
         self.loop_scheduler.start_looping();
 
-        let num_samples_to_previous_grid = beats_to_samples(
-            self.loop_scheduler.beats_since_last_grid() as f32,
-            self.tempo,
-            self.sample_rate,
-        ) as usize;
+        let num_samples_to_previous_grid = self
+            .time
+            .beats_to_samples(self.loop_scheduler.beats_since_last_grid() as f32)
+            as usize;
 
         self.grain_player
             .initiate_looping_reference(num_samples_to_previous_grid + 1);
@@ -160,11 +146,8 @@ impl<T: AudioSampleOps> GrainLooper<T> {
 
     fn start_grain(&mut self, duration: usize, offset_reduction: f64) {
         self.grain_player.start_grain(Grain::new(
-            beats_to_samples(
-                self.loop_offset_beats - offset_reduction as f32,
-                self.tempo,
-                self.sample_rate,
-            ) as f32,
+            self.time
+                .beats_to_samples(self.loop_offset_beats - offset_reduction as f32),
             duration,
             self.fade_duration_samples,
             self.reverse,
@@ -186,17 +169,14 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         for event in events {
             match event {
                 LoopEvent::StartGrain { duration } => {
-                    self.start_grain(
-                        beats_to_samples(duration as f32, self.tempo, self.sample_rate) as usize,
-                        0.0,
-                    );
+                    self.start_grain(self.time.beats_to_samples(duration as f32) as usize, 0.0);
                 }
                 LoopEvent::StartLegatoGrain {
                     duration,
                     offset_reduction,
                 } => {
                     self.start_grain(
-                        beats_to_samples(duration as f32, self.tempo, self.sample_rate) as usize,
+                        self.time.beats_to_samples(duration as f32) as usize,
                         offset_reduction,
                     );
                 }
@@ -311,17 +291,8 @@ mod tests {
         fn set_tempo(&mut self, tempo: f32) {
             self.looper.set_tempo(tempo);
             let bps = tempo / 60.0;
-            self.beat_time_increment = (bps / self.looper.sample_rate) as f64;
+            self.beat_time_increment = (bps / self.looper.time.sample_rate()) as f64;
         }
-    }
-
-    #[test]
-    fn test_beats_to_samples() {
-        let tempo = 120.0;
-        let sample_rate = 10.0;
-        assert_eq!(beats_to_samples(1.0, tempo, sample_rate), 5.0);
-        assert_eq!(beats_to_samples(0.5, tempo, sample_rate), 2.5);
-        assert_eq!(beats_to_samples(0.1, 60.0, 10.0), 1.0);
     }
 
     #[test]

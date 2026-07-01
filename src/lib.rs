@@ -1,4 +1,3 @@
-use grain_looper::beats_to_samples;
 use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, EguiState};
 use std::sync::Arc;
@@ -12,11 +11,12 @@ mod ramped_value;
 mod scheduler;
 mod stereo_pair;
 mod test_utils;
+mod time_converter;
 mod ui;
 use delay_line::DelayLine;
-use grain_looper::samples_to_beats;
 use grain_looper::GrainLooper;
 use stereo_pair::StereoPair;
+use time_converter::TimeConverter;
 use ui::waveform_display::WaveformBar;
 
 const GUI_WIDTH: u32 = 800;
@@ -248,15 +248,17 @@ impl Plugin for Metaloop {
         let tempo = context.transport().tempo.unwrap_or(120.0) as f32;
         self.grain_looper.set_tempo(tempo);
 
+        let time = TimeConverter::new(self.sample_rate, tempo);
+
         // work out how long the UI is in samples
         let ui_width_beats = 2.0;
-        let ui_width_samples = beats_to_samples(ui_width_beats, tempo, self.sample_rate);
+        let ui_width_samples = time.beats_to_samples(ui_width_beats);
 
         // we are accumulating multiple samples for each pixel
         let pixels_per_sample = GUI_WIDTH as f32 / ui_width_samples;
         let mut pixel_counter = 0.0;
 
-        let beat_time_inc = samples_to_beats(1, tempo, self.sample_rate) as f64;
+        let beat_time_inc = time.samples_to_beats(1) as f64;
         let beat_time_start = context.transport().pos_beats().unwrap_or(0.0);
 
         for (sample_idx, mut channel_samples) in buffer.iter_samples().enumerate() {
