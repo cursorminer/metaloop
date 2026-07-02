@@ -135,6 +135,14 @@ impl LoopScheduler {
         debug_assert!(!self.is_looping);
         self.is_looping = true;
         self.time_looping_initiated = self.current_song_time;
+
+        // a previous stop_looping_on_next_grid() may have left a StopGrain/FadeInDry
+        // event scheduled for later that hasn't fired yet (e.g. quickly restarting the
+        // loop before its fade completed) - that event is now stale and, since the
+        // scheduler is a simple monotonic queue, could also be later than the new event
+        // below, so it must be cleared rather than left in place
+        self.scheduler.clear();
+
         let next_grid_interval = self.next_grid(true);
 
         self.scheduler
