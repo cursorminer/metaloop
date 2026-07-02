@@ -6,22 +6,13 @@ use emath::{Pos2, Rect};
 use std::cmp::min;
 
 // TODO these are duplicated from the nih-plug, we should probably move them to a common place
-const SYNCED_RATES: [(i32, i32); 16] = [
+const SYNCED_RATES: [(i32, i32); 7] = [
     (1, 64),
-    (1, 48),
     (1, 32),
-    (1, 24),
     (1, 16),
-    (1, 12),
     (1, 8),
-    (1, 6),
-    (3, 16),
     (1, 4),
-    (5, 16),
-    (1, 3),
-    (3, 8),
     (1, 2),
-    (3, 4),
     (1, 1),
 ];
 
@@ -124,17 +115,18 @@ impl<'a> MyParamSlider<'a> {
 
     fn num_offset_steps(&self, y_index: i32) -> i32 {
         let quantization_step = self.offset_quant_for_loop_length(y_index);
-        (NUM_BEATS_X / quantization_step).floor() as i32 + 1
+        (NUM_BEATS_X / quantization_step).floor() as i32
     }
 
-    // set the normalized offset value
-    fn set_normalized_x(&self, normalized_x: f32) {
+    // set the normalized offset value, given the mouse's normalized position from the left
+    fn set_normalized_x(&self, normalized_x_from_left: f32) {
         let x_steps = self.num_offset_steps(self.y_param.value());
-        // first quantize to the offset quantization
-        let quantized_offset = (normalized_x * x_steps as f32).floor() / x_steps as f32;
+        // quantize the position the mouse is actually at, then mirror it into the stored
+        // (right-to-left) representation used by `norm_offset_to_x` for drawing
+        let quantized_x = (normalized_x_from_left * x_steps as f32).floor() / x_steps as f32;
+        let quantized_offset = 1.0 - quantized_x;
         // check if value is different
         if quantized_offset != self.normalized_value_x() {
-            println!("Setting offset to {}", quantized_offset * NUM_BEATS_X);
             self.setter
                 .set_parameter(self.offset_param, quantized_offset * NUM_BEATS_X);
         }
@@ -185,7 +177,7 @@ impl<'a> MyParamSlider<'a> {
 
             let x_steps = self.num_offset_steps(i as i32);
             let x_grid_size = widget_size.x / x_steps as f32;
-            for i in 0..x_steps + 2 {
+            for i in 0..x_steps + 1 {
                 // draw a grid for the steppy param
                 let x = i as f32 * x_grid_size + response.rect.min.x;
                 ui.painter().vline(
@@ -241,8 +233,8 @@ impl<'a> MyParamSlider<'a> {
 
             let [x, y] = self.normalized_position(click_pos, response);
 
-            self.set_normalized_x(1.0 - x);
             self.set_normalized_y(y);
+            self.set_normalized_x(x);
             self.click_pos = response.interact_pointer_pos();
         }
         if response.double_clicked() {

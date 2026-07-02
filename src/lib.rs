@@ -24,22 +24,13 @@ const GUI_HEIGHT: u32 = 600;
 const WAVEFORM_HEIGHT: f32 = 100.0;
 const XY_PAD_HEIGHT: f32 = 400.0;
 
-const SYNCED_RATES: [(i32, i32); 16] = [
+const SYNCED_RATES: [(i32, i32); 7] = [
     (1, 64),
-    (1, 48),
     (1, 32),
-    (1, 24),
     (1, 16),
-    (1, 12),
     (1, 8),
-    (1, 6),
-    (3, 16),
     (1, 4),
-    (5, 16),
-    (1, 3),
-    (3, 8),
     (1, 2),
-    (3, 4),
     (1, 1),
 ];
 
@@ -122,7 +113,7 @@ impl Default for MetaloopParams {
                 4,
                 IntRange::Linear {
                     min: (0),
-                    max: (15),
+                    max: (SYNCED_RATES.len() as i32 - 1),
                 },
             ),
 
