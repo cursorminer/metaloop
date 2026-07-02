@@ -9,42 +9,29 @@ mod grain_player;
 mod loop_scheduler;
 mod ramped_value;
 mod stereo_pair;
+mod sync_rates;
 mod test_utils;
 mod time_converter;
 mod ui;
-use delay_line::DelayLine;
+mod waveform_state;
 use grain_looper::GrainLooper;
 use stereo_pair::StereoPair;
+use sync_rates::{grid_size_for_int_control, SYNCED_RATES};
 use time_converter::TimeConverter;
-use ui::waveform_display::WaveformBar;
+use waveform_state::{WaveformState, WaveformWriter};
 
 const GUI_WIDTH: u32 = 800;
 const GUI_HEIGHT: u32 = 600;
 const WAVEFORM_HEIGHT: f32 = 100.0;
 const XY_PAD_HEIGHT: f32 = 400.0;
 
-const SYNCED_RATES: [(i32, i32); 7] = [
-    (1, 64),
-    (1, 32),
-    (1, 16),
-    (1, 8),
-    (1, 4),
-    (1, 2),
-    (1, 1),
-];
-
-pub fn grid_size_for_int_control(value: i32) -> f32 {
-    let (num, denom) = SYNCED_RATES[value as usize];
-    4.0 * num as f32 / denom as f32
-}
-
 pub struct Metaloop {
     params: Arc<MetaloopParams>,
     grain_looper: GrainLooper<StereoPair<f32>>,
     sample_rate: f32,
-    waveform_buffer: DelayLine<WaveformBar>,
-    min_sample: f32,
-    max_sample: f32,
+    waveform_state: Arc<WaveformState>,
+    waveform_writer: WaveformWriter,
+    loop_was_committed: bool,
 }
 
 #[derive(Params)]
@@ -80,15 +67,13 @@ struct MetaloopParams {
 
 impl Default for Metaloop {
     fn default() -> Self {
-        let wave_buffer = DelayLine::new(GUI_WIDTH as usize);
-
         Self {
             params: Arc::new(MetaloopParams::default()),
             grain_looper: GrainLooper::new(44100.0),
             sample_rate: 44100.0,
-            waveform_buffer: wave_buffer,
-            min_sample: 1.0,
-            max_sample: -1.0,
+            waveform_state: Arc::new(WaveformState::new()),
+            waveform_writer: WaveformWriter::new(),
+            loop_was_committed: false,
         }
     }
 }
@@ -240,14 +225,6 @@ impl Plugin for Metaloop {
 
         let time = TimeConverter::new(self.sample_rate, tempo);
 
-        // work out how long the UI is in samples
-        let ui_width_beats = 2.0;
-        let ui_width_samples = time.beats_to_samples(ui_width_beats);
-
-        // we are accumulating multiple samples for each pixel
-        let pixels_per_sample = GUI_WIDTH as f32 / ui_width_samples;
-        let mut pixel_counter = 0.0;
-
         let beat_time_inc = time.samples_to_beats(1) as f64;
         let beat_time_start = context.transport().pos_beats().unwrap_or(0.0);
 
@@ -265,24 +242,18 @@ impl Plugin for Metaloop {
             *channel_samples.get_mut(1).unwrap() = output.right();
 
             let mono_sample = (input.left + input.right) * 0.5;
-            if mono_sample < self.min_sample {
-                self.min_sample = mono_sample;
-            }
-            if mono_sample > self.max_sample {
-                self.max_sample = mono_sample;
-            }
+            self.waveform_writer
+                .write(&self.waveform_state, beat_time, mono_sample);
 
-            if pixel_counter > 1.0 {
-                self.waveform_buffer.tick(WaveformBar {
-                    min: self.min_sample,
-                    max: self.max_sample,
-                });
-
-                self.min_sample = 1.0;
-                self.max_sample = -1.0;
-                pixel_counter = pixel_counter - 1.0;
+            // freeze the waveform window the moment a loop commits (the first
+            // grain fires at its grid boundary); unfreeze once the loop is over
+            let committed = self.grain_looper.loop_committed();
+            if committed && !self.loop_was_committed {
+                self.waveform_state.freeze(beat_time);
+            } else if !committed && self.loop_was_committed {
+                self.waveform_state.unfreeze();
             }
-            pixel_counter = pixel_counter + pixels_per_sample;
+            self.loop_was_committed = committed;
         }
 
         // if the transport has been stopped, stop the loop and reset the block
@@ -299,10 +270,9 @@ impl Plugin for Metaloop {
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
-        let wave = self.waveform_buffer.clone();
+        let wave = self.waveform_state.clone();
 
         let border = 4.0;
-        // this is bad
         create_egui_editor(
             self.params.editor_state.clone(),
             (),
@@ -312,10 +282,17 @@ impl Plugin for Metaloop {
                 let window_size = screen_rect.size();
 
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
+                    let loop_len_beats =
+                        grid_size_for_int_control(params.loop_length_sixteenths.value());
+
                     ui.add(
-                        ui::WaveformDisplay::with_wave(&wave)
-                            .with_width(window_size.x - border * 2.0)
-                            .with_height(WAVEFORM_HEIGHT),
+                        ui::WaveformDisplay::new(
+                            wave.clone(),
+                            params.loop_offset_beats.value(),
+                            loop_len_beats,
+                        )
+                        .with_width(window_size.x - border * 2.0)
+                        .with_height(WAVEFORM_HEIGHT),
                     );
 
                     ui.add(
@@ -329,6 +306,10 @@ impl Plugin for Metaloop {
                         .with_height(XY_PAD_HEIGHT),
                     );
                 });
+
+                // the waveform scrolls with audio, not with input events, so
+                // keep the editor repainting continuously
+                egui_ctx.request_repaint();
             },
         )
     }

@@ -174,6 +174,16 @@ impl LoopScheduler {
         )
     }
 
+    // true while loop content is actually sounding: from the first grain
+    // firing (Armed doesn't count) until a stop commits at its boundary.
+    // Survives a Stopping -> Looping resume
+    pub fn is_committed(&self) -> bool {
+        matches!(
+            self.phase,
+            LoopPhase::Looping { .. } | LoopPhase::Stopping { .. }
+        )
+    }
+
     pub fn tick(&mut self, beat_time: f64) -> ArrayVec<LoopEvent, MAX_EVENTS_PER_TICK> {
         if beat_time < self.current_song_time {
             // the transport jumped backwards (e.g. host loop wrap): keep any
@@ -495,6 +505,39 @@ mod tests {
         // and continues
         let out8 = scheduler.tick(8.0);
         assert_eq!(out8.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
+    }
+
+    #[test]
+    fn test_loop_scheduler_is_committed() {
+        let mut scheduler = LoopScheduler::new();
+        scheduler.set_grid_interval(1.0);
+        scheduler.tick(0.2);
+
+        // armed but nothing sounding yet
+        scheduler.start_looping();
+        assert!(!scheduler.is_committed());
+
+        // cancelling the arm never commits
+        scheduler.stop_looping_on_next_grid();
+        scheduler.tick(2.0);
+        assert!(!scheduler.is_committed());
+
+        // committed once the first grain fires
+        scheduler.start_looping();
+        scheduler.tick(3.0);
+        assert!(scheduler.is_committed());
+
+        // survives a stop that gets cancelled before its boundary
+        scheduler.stop_looping_on_next_grid();
+        assert!(scheduler.is_committed());
+        scheduler.tick(3.5);
+        scheduler.start_looping();
+        assert!(scheduler.is_committed());
+
+        // ends when a stop commits at its boundary
+        scheduler.stop_looping_on_next_grid();
+        scheduler.tick(4.0);
+        assert!(!scheduler.is_committed());
     }
 
     #[test]

@@ -21,14 +21,24 @@ Metaloop (Plugin - lib.rs)
     GrainPlayer     - Manages up to 10 concurrent grains + dual delay buffers
       Grain         - Single faded audio grain (position, envelope, direction, speed)
       DelayLine<T>  - Generic circular buffer with linear interpolation
-    LoopScheduler   - Beat-synchronized event scheduling
-      Scheduler<E>  - Generic time-ordered event queue
+    LoopScheduler   - Beat-synced phase state machine (Idle/Armed/Looping/Stopping);
+                      derives events per tick, nothing pre-scheduled
   RampedValue       - Linear value ramping for fades
   StereoPair<T>     - Generic stereo container with arithmetic ops
+  WaveformState     - Lock-free audio->GUI waveform feed (atomic min/max bins,
+                      beat-aligned; freezes a snapshot at loop commit)
+  SyncRates         - Shared musical grid (SYNCED_RATES, NUM_BEATS_X)
   UI (egui)
-    WaveformDisplay - Waveform visualization widget
+    WaveformDisplay - Scrolling/frozen waveform strip + loop highlight
     MyParamSlider   - 2D XY pad for loop offset + length
 ```
+
+### Dry/wet invariant
+The dry level is *derived* each tick from grain liveness
+(`num_playing_non_fading_out_grains()`), not scheduled: grains sounding ⇒ dry
+ramps to 0, none ⇒ ramps to 1 over the fade time. Do not reintroduce
+separately-scheduled dry fades; that architecture caused the historic
+"looper goes silent" bug (see TODO.md P0, fixed).
 
 ### Key Trait
 - `AudioSampleOps` (stereo_pair.rs) - Trait alias for types supporting audio arithmetic (Copy + Default + Add + Sub + Mul + AddAssign). Implemented for all qualifying types.
@@ -57,17 +67,16 @@ cargo check
 - **Framework**: nih-plug (git dependency from https://github.com/robbert-vdh/nih-plug.git)
 - **UI**: nih_plug_egui (egui integration for nih-plug)
 - **Stereo only**: 2-channel input/output
-- **Beat-synced**: Loop lengths quantized to musical subdivisions (SYNCED_RATES table in lib.rs)
+- **Beat-synced**: Loop lengths quantized to musical subdivisions (SYNCED_RATES table in sync_rates.rs)
 - **Tests**: Most modules have `#[cfg(test)] mod tests` blocks. Use `test_utils::all_near()` for float comparisons.
 - **Dead code suppression**: Many modules use `#[allow(dead_code)]` since public APIs may not be used internally but are part of the module interface.
+- **Standalone testing**: `cargo run --features standalone --bin metaloop_gui -- --sample-rate 44100` (the rate must match the output device's native rate or nih-plug's CPAL backend aborts).
 
 ## Known Issues / TODOs
-- `src/PGHI/heap.rs` is orphaned (not declared as a module) - WIP heap sort experiment
-- `countdown_trigger.rs` is declared but unused
-- Output is delayed by one sample (TODO in lib.rs:273)
-- `loop_scheduler.rs:68` - `set_fade_lead_in()` is a no-op
+See TODO.md for the maintained list. Quick notes:
+- `src/PGHI/heap.rs` and `src/countdown_trigger.rs` are orphaned (not declared as modules)
+- Output is delayed by one sample (TODO in lib.rs)
 - `grain_looper.rs` has a TODO about setting fade time in seconds vs samples
-- Debug assertion in grain_looper.rs about dry_level being zero with no grains
 
 ## File Layout
 ```
@@ -76,17 +85,17 @@ src/
   grain.rs                - Single grain with fade envelope
   grain_player.rs         - Multi-grain manager with dual delay buffers
   grain_looper.rs         - Top-level looper logic
-  loop_scheduler.rs       - Beat-synced event scheduler
-  scheduler.rs            - Generic event queue
+  loop_scheduler.rs       - Beat-synced phase state machine
   delay_line.rs           - Circular buffer
   ramped_value.rs         - Linear value ramping
   stereo_pair.rs          - Stereo pair type + AudioSampleOps trait
-  countdown_trigger.rs    - Countdown utility (unused)
+  sync_rates.rs           - Shared musical grid constants
+  time_converter.rs       - Beats <-> samples conversion
+  waveform_state.rs       - Lock-free audio->GUI waveform feed
   test_utils.rs           - Float comparison helpers
   PGHI/heap.rs            - Max heap (orphaned, WIP)
   ui/
     mod.rs                - UI module re-exports
-    ui.rs                 - (empty or minimal)
-    waveform_display.rs   - Waveform visualization
+    waveform_display.rs   - Scrolling/frozen waveform strip
     my_param_slider.rs    - 2D XY control pad
 ```

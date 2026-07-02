@@ -2,27 +2,20 @@ use nih_plug::prelude::{BoolParam, FloatParam, IntParam, IntRange, Param, ParamS
 
 use nih_plug_egui::egui::{emath, vec2, CursorIcon, Response, Sense, Ui, Widget};
 
+use crate::sync_rates::{grid_size_for_int_control, NUM_BEATS_X};
 use emath::{Pos2, Rect};
-use std::cmp::min;
 
-// TODO these are duplicated from the nih-plug, we should probably move them to a common place
-const SYNCED_RATES: [(i32, i32); 7] = [
-    (1, 64),
-    (1, 32),
-    (1, 16),
-    (1, 8),
-    (1, 4),
-    (1, 2),
-    (1, 1),
-];
-
-pub fn grid_size_for_int_control(value: i32) -> f32 {
-    let i = min(value, SYNCED_RATES.len() as i32 - 1) as usize;
-    let (num, denom) = SYNCED_RATES[i];
-    4.0 * num as f32 / denom as f32
+// Map a click to the offset param value such that the clicked cell loops
+// exactly the audio beneath it. The engine plays [offset + len, offset] beats
+// before the loop-start boundary (offset measures how far back the loop
+// *ends*), and the window's right edge is that boundary, so a cell's offset
+// is the distance from the right edge to the cell's own right edge - one
+// cell less than the naive left-edge mapping.
+fn quantized_cell_offset_beats(normalized_x_from_left: f32, loop_len_beats: f32) -> f32 {
+    let steps = (NUM_BEATS_X / loop_len_beats).floor();
+    let quantized_x = (normalized_x_from_left.clamp(0.0, 1.0) * steps).floor() / steps;
+    (((1.0 - quantized_x) * NUM_BEATS_X) - loop_len_beats).max(0.0)
 }
-
-const NUM_BEATS_X: f32 = 4.0;
 
 /// A slider widget similar to [`egui::widgets::Slider`] that knows about NIH-plug parameters ranges
 /// and can get values for it. The slider supports double click and control click to reset,
@@ -118,17 +111,13 @@ impl<'a> MyParamSlider<'a> {
         (NUM_BEATS_X / quantization_step).floor() as i32
     }
 
-    // set the normalized offset value, given the mouse's normalized position from the left
+    // set the offset param, given the mouse's normalized position from the left
     fn set_normalized_x(&self, normalized_x_from_left: f32) {
-        let x_steps = self.num_offset_steps(self.y_param.value());
-        // quantize the position the mouse is actually at, then mirror it into the stored
-        // (right-to-left) representation used by `norm_offset_to_x` for drawing
-        let quantized_x = (normalized_x_from_left * x_steps as f32).floor() / x_steps as f32;
-        let quantized_offset = 1.0 - quantized_x;
+        let loop_len_beats = grid_size_for_int_control(self.y_param.value());
+        let offset_beats = quantized_cell_offset_beats(normalized_x_from_left, loop_len_beats);
         // check if value is different
-        if quantized_offset != self.normalized_value_x() {
-            self.setter
-                .set_parameter(self.offset_param, quantized_offset * NUM_BEATS_X);
+        if offset_beats != self.normalized_value_x() * NUM_BEATS_X {
+            self.setter.set_parameter(self.offset_param, offset_beats);
         }
     }
 
@@ -191,11 +180,13 @@ impl<'a> MyParamSlider<'a> {
             }
         }
 
-        // draw a square on the active grid square
-        let min_x = self.norm_offset_to_x(self.normalized_value_x(), response);
+        // draw a square on the active grid square: the loop *ends* offset
+        // beats before the right edge and extends one loop length further
+        // back, so the cell sits to the left of the offset point
+        let max_x = self.norm_offset_to_x(self.normalized_value_x(), response);
         let loop_len_in_beats = grid_size_for_int_control(self.y_param.value());
         let loop_len_i_pixels = loop_len_in_beats / NUM_BEATS_X * widget_size.x;
-        let max_x = min_x + loop_len_i_pixels;
+        let min_x = max_x - loop_len_i_pixels;
 
         let min_y =
             y_steps as f32 * self.normalized_value_y() as f32 * y_grid_size + response.rect.min.y;
@@ -293,5 +284,36 @@ impl Widget for MyParamSlider<'_> {
             response
         })
         .inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_quantized_cell_offset_maps_cell_to_its_own_audio() {
+        // for every row: clicking cell k (of n) must yield offset (n-1-k)*L,
+        // so the span the engine plays, [offset + L, offset] beats before the
+        // boundary, is exactly cell k's own span
+        for row in 0..7 {
+            let len = grid_size_for_int_control(row);
+            let n = (NUM_BEATS_X / len) as i32;
+            for k in 0..n {
+                // click in the middle of cell k
+                let x = (k as f32 + 0.5) / n as f32;
+                let offset = quantized_cell_offset_beats(x, len);
+                assert_eq!(offset, (n - 1 - k) as f32 * len, "row {} cell {}", row, k);
+
+                // cell k's span in beats-before-boundary coordinates
+                let cell_left = NUM_BEATS_X - k as f32 * len;
+                let cell_right = NUM_BEATS_X - (k + 1) as f32 * len;
+                assert_eq!(offset + len, cell_left);
+                assert_eq!(offset, cell_right);
+            }
+        }
+
+        // the rightmost cell reaches the most recent audio (offset 0)
+        assert_eq!(quantized_cell_offset_beats(0.999, 1.0), 0.0);
     }
 }

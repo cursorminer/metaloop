@@ -58,14 +58,6 @@ matches the file's own path. It is entirely disconnected from the crate and
 does not currently compile as part of the build. Either finish wiring it in
 with real tests, or remove it until it's needed.
 
-### `src/ui/ui.rs` looks like dead leftover
-`src/ui/mod.rs` only declares `mod my_param_slider;` and
-`pub mod waveform_display;` — there is no `mod ui;`, so `src/ui/ui.rs`
-(a 3-line file that just re-declares `mod my_param_slider;` and
-`pub use my_param_slider::MyParamSlider;`) is not part of the module tree at
-all and isn't compiled. Looks like a stray duplicate left over from
-reorganizing the `ui` module; safe to delete once confirmed unused.
-
 ## P3 — smaller cleanups (from `cargo clippy --lib`)
 
 `cargo clippy --lib` currently reports 32 warnings. Most are trivial style
@@ -74,12 +66,6 @@ issues, but a few are worth calling out:
   either use it or remove it.
 - Several `unneeded return` / `manual implementation of an assign operation`
   (e.g. `x = x + 1` instead of `x += 1`) across `grain.rs`, `delay_line.rs`.
-- `println!("Setting offset to {}", ...)` debug print left in
-  `ui/my_param_slider.rs::set_normalized_x` — should probably be removed or
-  gated behind a debug flag before shipping.
-- Stale comment in `lib.rs::editor()`: `// this is bad` above the
-  `create_egui_editor` call, with no further explanation of what's bad about
-  it — worth either fixing or turning into an actionable TODO.
 - `GrainLooper::num_playing_grains()` is a private method with no callers
   (the assert that used it is gone) — remove it or use it.
 - `MyParamSlider` calls `setter.set_parameter()` in its drag handling without

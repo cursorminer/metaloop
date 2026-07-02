@@ -226,6 +226,12 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     pub fn is_looping(&self) -> bool {
         self.loop_scheduler.is_looping()
     }
+
+    // true while loop content is actually sounding (first grain fired, stop
+    // not yet committed) - drives the waveform display freeze
+    pub fn loop_committed(&self) -> bool {
+        self.loop_scheduler.is_committed()
+    }
 }
 
 #[cfg(test)]
