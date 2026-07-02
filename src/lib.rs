@@ -8,7 +8,6 @@ mod grain_looper;
 mod grain_player;
 mod loop_scheduler;
 mod ramped_value;
-mod scheduler;
 mod stereo_pair;
 mod test_utils;
 mod time_converter;

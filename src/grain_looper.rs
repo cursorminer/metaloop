@@ -1,11 +1,9 @@
 use crate::grain::Grain;
 use crate::grain_player::GrainPlayer;
-use crate::loop_scheduler::LoopEvent;
-use crate::loop_scheduler::LoopScheduler;
+use crate::loop_scheduler::{LoopEvent, LoopScheduler, StartTransition, StopTransition};
 use crate::ramped_value::RampedValue;
 use crate::stereo_pair::AudioSampleOps;
 use crate::time_converter::TimeConverter;
-use nih_plug::nih_debug_assert;
 
 // how much of the buffer we allow to scrub through
 // TODO set these to be seconds
@@ -21,12 +19,14 @@ const MAX_LOOP_LENGTH: usize = LOOPABLE_REGION_LENGTH / 2;
 pub struct GrainLooper<T: AudioSampleOps> {
     grain_player: GrainPlayer<T>,
     loop_scheduler: LoopScheduler,
-    is_looping: bool,
     time: TimeConverter,
 
     loop_offset_beats: f32,
     fade_duration_samples: usize,
     dry_ramp: RampedValue,
+    // whether the wet side was carrying the signal on the previous tick, so
+    // the dry ramp only gets retargeted on a change
+    wet_was_active: bool,
     reverse: bool,
     speed: f32,
 }
@@ -57,13 +57,13 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                 max_loop_length,
             ),
             loop_scheduler: LoopScheduler::new(),
-            is_looping: false,
             time: TimeConverter::new(sample_rate, 120.0),
 
             loop_offset_beats: 0.0,
             fade_duration_samples: 0,
 
             dry_ramp: RampedValue::new(1.0),
+            wet_was_active: false,
             reverse: false,
             speed: 1.0,
         }
@@ -72,14 +72,16 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     pub fn reset(&mut self) {
         self.grain_player.reset();
         self.loop_scheduler.reset();
-        self.is_looping = false;
         self.dry_ramp.set(1.0);
+        self.wet_was_active = false;
     }
 
     pub fn stop_looping_immediately(&mut self) {
-        self.is_looping = false;
         self.loop_scheduler.stop_looping_immediately();
         self.grain_player.stop_all_grains();
+        if self.grain_player.is_looping() {
+            self.grain_player.uninitiate_looping_reference();
+        }
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
@@ -91,7 +93,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         // since everything is scheduled in beats, we don't need to update much
         // but the offset needs to stay the same number of samples if we are looping.
         // existing grains will have the same duration, so there could be gaps
-        if self.is_looping {
+        if self.is_looping() {
             let ratio = bpm / self.time.tempo();
             self.loop_offset_beats *= ratio;
         }
@@ -125,33 +127,28 @@ impl<T: AudioSampleOps> GrainLooper<T> {
         self.loop_scheduler.set_grid_interval(duration_beats as f64);
     }
 
-    // note that the loop_start_point_seconds is toward the past, as we want to loop something that has already started
+    // note that the loop start point is toward the past, as we want to loop something that has already started
     pub fn start_looping(&mut self) {
-        // if a previous start/stop's fade was left in flight (e.g. clicking again
-        // before its own grid boundary arrived, which clears its scheduled events),
-        // that ramp keeps ticking on its own and can reach 0 with no grain ever
-        // following it. Resetting here guarantees dry only fades out in lockstep
-        // with this start's own FadeOutDry/StartGrain pair, which are scheduled for
-        // the same tick - if that tick never arrives before the next click clears
-        // it, dry correctly stays put instead of silently draining to zero
-        self.dry_ramp.set(1.0);
+        // resuming a not-yet-committed stop needs no new buffer reference: the
+        // old loop simply carries on
+        if self.loop_scheduler.start_looping() == StartTransition::Armed {
+            let num_samples_to_previous_grid = self
+                .time
+                .beats_to_samples(self.loop_scheduler.beats_since_last_grid() as f32)
+                as usize;
 
-        self.loop_scheduler.start_looping();
-
-        let num_samples_to_previous_grid = self
-            .time
-            .beats_to_samples(self.loop_scheduler.beats_since_last_grid() as f32)
-            as usize;
-
-        self.grain_player
-            .initiate_looping_reference(num_samples_to_previous_grid + 1);
-        self.is_looping = true;
+            self.grain_player
+                .initiate_looping_reference(num_samples_to_previous_grid + 1);
+        }
     }
 
     pub fn stop_looping(&mut self) {
-        self.loop_scheduler.stop_looping_on_next_grid();
-        self.grain_player.uninitiate_looping_reference();
-        self.is_looping = false;
+        // when a real stop commits at its grid boundary, LoopEnded arrives in
+        // tick() and releases the buffer reference then - releasing it here
+        // would flip buffers under grains that are still sounding
+        if self.loop_scheduler.stop_looping_on_next_grid() == StopTransition::CancelledArm {
+            self.grain_player.uninitiate_looping_reference();
+        }
     }
 
     fn start_grain(&mut self, duration: usize, offset_reduction: f64) {
@@ -194,45 +191,32 @@ impl<T: AudioSampleOps> GrainLooper<T> {
                     // we stop them all
                     self.grain_player.stop_all_grains();
                 }
-                LoopEvent::FadeInDry => {
-                    self.dry_ramp.ramp(1.0, self.fade_duration_samples);
+                LoopEvent::LoopEnded => {
+                    self.grain_player.uninitiate_looping_reference();
                 }
-                LoopEvent::FadeOutDry => {
-                    self.dry_ramp.ramp(0.0, self.fade_duration_samples);
-                }
-                _ => {}
             }
         }
 
-        let dry = input;
-
-        // a grain that finishes exactly on this sample still contributes valid output to
-        // `looped` below, so liveness must be checked before the tick that may finish it -
-        // checking after would see 0 playing grains on every grain's final sample even
-        // though that sample's audio is correct
-        let had_playing_grain = self.grain_player.num_playing_grains() > 0;
+        // the dry level is derived from what the grains are actually doing
+        // rather than faded by separately scheduled events: whenever a grain is
+        // sounding and not on its way out, dry belongs at 0, otherwise at 1.
+        // A grain fading out with no successor pulls dry back in over the same
+        // fade window, so "dry silent with nothing playing" cannot persist -
+        // the invariant the old scheduled fades could only try to police.
+        // Queried before the player tick (but after the events above) so that a
+        // grain on its final valid sample still counts and one started this
+        // tick already counts
+        let wet_active = self.grain_player.num_playing_non_fading_out_grains() > 0;
 
         let looped = self.grain_player.tick(input);
-
-        let dry_level = self.dry_ramp.tick();
-        // make some assertions about the state of grain player
-        // if we're looping then there should always be at least one grain playing.
-        // this can still happen under pathologically fast start/stop cycling (faster
-        // than a single grid interval), where a committed fade-out's matching grain
-        // finishes before a subsequent grid boundary ever arrives to replace it - rare
-        // enough, and self-correcting on the next real loop start, that we log rather
-        // than take down the audio thread over it (matches nih_debug_assert! usage
-        // elsewhere in this codebase, e.g. grain_player.rs's grain-pool-full case)
-        if dry_level == 0.0 && !had_playing_grain {
-            nih_debug_assert!(
-                false,
-                "Grain player is in an inconsistent state, dry_level: {}, num_playing_grains: {}",
-                dry_level,
-                self.grain_player.num_playing_grains()
-            );
+        if wet_active != self.wet_was_active {
+            let target = if wet_active { 0.0 } else { 1.0 };
+            self.dry_ramp.ramp(target, self.fade_duration_samples);
+            self.wet_was_active = wet_active;
         }
+        let dry_level = self.dry_ramp.tick();
 
-        looped + dry * dry_level as f32
+        looped + input * dry_level as f32
     }
 
     fn num_playing_grains(&self) -> usize {
@@ -240,7 +224,7 @@ impl<T: AudioSampleOps> GrainLooper<T> {
     }
 
     pub fn is_looping(&self) -> bool {
-        self.is_looping
+        self.loop_scheduler.is_looping()
     }
 }
 
@@ -695,6 +679,70 @@ mod tests {
                 beat_time += beat_time_increment;
             }
         }
+    }
+
+    #[test]
+    fn test_grain_looper_never_goes_silent() {
+        // the P0 silence bug: rapid start/stop cycling combined with grid and
+        // offset changes could leave dry faded out with no grain ever
+        // replacing it, going silent indefinitely. With the dry level derived
+        // from grain liveness this cannot persist: on a DC input the output
+        // must never stay near zero for longer than one fade window
+        let sample_rate = 44100.0;
+        let tempo = 120.0;
+        let mut looper: GrainLooper<f32> = GrainLooper::new(sample_rate);
+        looper.set_tempo(tempo);
+        let fade_beats = 0.02;
+        looper.set_fade_time(fade_beats);
+        let fade_samples = looper.time.beats_to_samples(fade_beats) as usize;
+
+        let beat_time_increment = (tempo / 60.0) as f64 / sample_rate as f64;
+        let mut beat_time = 0.0;
+        let buffer_size = 512;
+
+        // warm up with DC so the loopable region is full of 1.0
+        for _ in 0..(sample_rate as usize) {
+            looper.tick(1.0, beat_time);
+            beat_time += beat_time_increment;
+        }
+
+        let grids = [0.0625, 0.125, 0.25, 0.0625, 0.5, 1.0, 0.0625, 0.25];
+        let offsets = [0.05, 3.9, 0.1, 2.0, 0.0, 1.0, 3.5, 0.2];
+
+        let mut consecutive_quiet = 0;
+        let mut max_consecutive_quiet = 0;
+        let mut check = |out: f32| {
+            if out.abs() < 0.1 {
+                consecutive_quiet += 1;
+                max_consecutive_quiet = max_consecutive_quiet.max(consecutive_quiet);
+            } else {
+                consecutive_quiet = 0;
+            }
+        };
+
+        for i in 0..grids.len() {
+            looper.set_grid(grids[i]);
+            looper.set_loop_offset(offsets[i]);
+            looper.start_looping();
+            for _ in 0..buffer_size {
+                check(looper.tick(1.0, beat_time));
+                beat_time += beat_time_increment;
+            }
+            looper.stop_looping();
+            for _ in 0..(buffer_size / 4) {
+                check(looper.tick(1.0, beat_time));
+                beat_time += beat_time_increment;
+            }
+        }
+
+        // a transient dip while a gap self-heals is acceptable, sustained
+        // silence is not: the dry ramp must recover within one fade window
+        assert!(
+            max_consecutive_quiet <= fade_samples + 2,
+            "output stayed quiet for {} samples (fade is {})",
+            max_consecutive_quiet,
+            fade_samples
+        );
     }
 
     #[test]

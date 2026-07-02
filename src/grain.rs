@@ -114,7 +114,7 @@ impl Grain {
     }
 
     pub fn is_finished(&self) -> bool {
-        return self.elapsed_sample_count == self.duration || self.duration == 0;
+        return self.elapsed_sample_count == self.duration;
     }
 
     pub fn is_playing(&self) -> bool {
@@ -124,8 +124,10 @@ impl Grain {
     pub fn is_fading_in(&self) -> bool {
         return self.elapsed_sample_count < self.fade_duration;
     }
+    // inclusive of the tick on which the fade-out ramp starts (see tick()),
+    // so it is already true when queried before that tick has run
     pub fn is_fading_out(&self) -> bool {
-        return self.elapsed_sample_count > (self.duration - self.fade_duration);
+        return self.elapsed_sample_count >= (self.duration - self.fade_duration);
     }
     pub fn elapsed_sample_count(&self) -> usize {
         return self.elapsed_sample_count;

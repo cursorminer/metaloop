@@ -6,7 +6,8 @@ use nih_plug::nih_debug_assert;
 pub const MAX_GRAINS: usize = 10;
 
 pub struct GrainPlayer<T: AudioSampleOps> {
-    grains: Vec<Grain>,
+    // fixed-size pool; a slot is None when free
+    grains: Vec<Option<Grain>>,
 
     buffer_a: DelayLine<T>,
     buffer_b: DelayLine<T>,
@@ -45,9 +46,9 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         let delay_line_a = DelayLine::new(delay_line_length);
         let delay_line_b = DelayLine::new(delay_line_length);
 
-        let mut grains_init = vec![];
+        let mut grains_init: Vec<Option<Grain>> = vec![];
         for _ in 0..MAX_GRAINS {
-            grains_init.push(Grain::new(0.0, 0, 0, false, 0.0));
+            grains_init.push(None);
         }
 
         GrainPlayer {
@@ -63,13 +64,13 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
         }
     }
 
-    pub fn start_grain(&mut self, grain: Grain) {
+    pub fn start_grain(&mut self, mut grain: Grain) {
         // todo look at all the params and make sure it will not read beyond the buffer
         // if the speed is too fast or whatever adjust in some musical way
-        for i in 0..self.grains.len() {
-            if self.grains[i].is_finished() {
-                self.grains[i] = grain;
-                self.grains[i].set_which_buffer(self.start_grains_buffer);
+        grain.set_which_buffer(self.start_grains_buffer);
+        for slot in self.grains.iter_mut() {
+            if slot.as_ref().map_or(true, |g| g.is_finished()) {
+                *slot = Some(grain);
                 return;
             }
         }
@@ -142,8 +143,12 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
 
         let mut out = Default::default();
 
-        for grain in self.grains.iter_mut() {
+        for slot in self.grains.iter_mut() {
+            let Some(grain) = slot else {
+                continue;
+            };
             if grain.is_finished() {
+                *slot = None;
                 continue;
             }
             if grain.which_buffer() == WhichBuffer::A {
@@ -201,7 +206,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     }
 
     pub fn stop_all_grains(&mut self) {
-        for grain in self.grains.iter_mut() {
+        for grain in self.grains.iter_mut().flatten() {
             grain.stop();
         }
     }
@@ -209,20 +214,32 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
     pub fn num_playing_grains(&self) -> usize {
         self.grains
             .iter()
+            .flatten()
             .filter(|grain| grain.is_playing())
+            .count()
+    }
+
+    // grains that are sounding and not on their way out: the wet side is
+    // carrying the signal iff this is non-zero
+    pub fn num_playing_non_fading_out_grains(&self) -> usize {
+        self.grains
+            .iter()
+            .flatten()
+            .filter(|grain| grain.is_playing() && !grain.is_fading_out())
             .count()
     }
 
     fn num_finished_grains(&self) -> usize {
         self.grains
             .iter()
-            .filter(|grain| grain.is_finished())
+            .filter(|slot| slot.as_ref().map_or(true, |g| g.is_finished()))
             .count()
     }
 
     pub fn most_recent_grain(&self) -> Option<&Grain> {
         self.grains
             .iter()
+            .flatten()
             .filter(|grain| grain.is_playing())
             .min_by_key(|grain| grain.elapsed_sample_count())
     }

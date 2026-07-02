@@ -1,7 +1,17 @@
-// This handles the actual events that control what the looper does
-// according to the beat time
+// Decides what the looper does at each tick according to the beat time.
+//
+// This is a phase state machine rather than an event queue: on every tick the
+// due actions are derived from the current phase, the grid math and the beat
+// time at which the currently sounding grain runs out (`grain_end`). Nothing
+// about the future is pre-committed, so parameter changes (grid, start/stop)
+// never need to clear or reschedule anything - the next tick simply
+// reconciles against what is actually sounding. This removes the class of
+// bugs where clearing a queue orphaned an in-flight fade or grain.
 use arrayvec::ArrayVec;
-use crate::scheduler::{Scheduler, MAX_EVENTS_PER_TICK};
+
+/// Maximum number of events that can fire on a single tick.
+/// In practice this is at most 2 (StopGrain + StartGrain), 8 gives headroom.
+pub const MAX_EVENTS_PER_TICK: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopEvent {
@@ -12,18 +22,45 @@ pub enum LoopEvent {
         duration: f64,
         offset_reduction: f64,
     }, // tell the grain player to start a grain part way thru, in the case where we want an existing grain to continue
-    StopGrain,  // stops the grain player
-    FadeOutDry, // fade out the dry signal
-    FadeInDry,  // fade in the dry signal
-    NextLoop,   // start the next loop. will schedule a new grain and schedule another NextLoop
+    StopGrain, // stops the grain player
+    LoopEnded, // a requested stop has committed at a grid boundary; looping is over
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum LoopPhase {
+    // not looping, nothing sounding
+    Idle,
+    // start requested at beat time `since`, waiting for the grid boundary
+    Armed { since: f64 },
+    // a grain is sounding and runs out at beat time `grain_end`
+    Looping { grain_end: f64 },
+    // stop requested: the loop ends at the next grid boundary
+    Stopping { grain_end: f64 },
+}
+
+// what a call to start_looping() actually did, so the caller knows whether a
+// new buffer reference is needed (Armed) or the old loop simply carries on
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StartTransition {
+    Armed,
+    Resumed,
+    Ignored,
+}
+
+// what a call to stop_looping_on_next_grid() actually did: CancelledArm means
+// looping never got going, so there is nothing sounding to wind down
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StopTransition {
+    StopScheduled,
+    CancelledArm,
+    Ignored,
+}
+
 pub struct LoopScheduler {
-    scheduler: Scheduler<LoopEvent>,
+    phase: LoopPhase,
     fade_in_time: f64,
     grid_interval: f64,
     current_song_time: f64,
-    time_looping_initiated: f64,
-    is_looping: bool,
 }
 
 type BeatTime = f64;
@@ -60,96 +97,45 @@ fn previous_grid_in_beats(
 impl LoopScheduler {
     pub fn new() -> LoopScheduler {
         LoopScheduler {
-            scheduler: Scheduler::new(),
+            phase: LoopPhase::Idle,
             fade_in_time: 0.0,
             grid_interval: 1.0,
             current_song_time: -1.0,
-            time_looping_initiated: 0.0,
-            is_looping: false,
         }
     }
 
     pub fn reset(&mut self) {
-        self.scheduler.reset();
-        self.is_looping = false;
+        self.phase = LoopPhase::Idle;
         self.current_song_time = -1.0;
     }
 
     // set fade lead time in beats
     pub fn set_fade_lead_in(&mut self, fade_in: f64) {
-        // Do nothing
         self.fade_in_time = fade_in;
     }
 
+    // nothing needs rescheduling on a grid change: the next tick reconciles
+    // the new boundaries against the grain that is actually sounding
     pub fn set_grid_interval(&mut self, new_interval_beats: f64) {
-        let next_old_grid_interval = self.next_grid(true);
-        let next_new_grid_interval = next_grid_in_beats(
-            self.current_song_time,
-            new_interval_beats,
-            self.fade_in_time,
-        );
-
-        // the simple cases just work
-        if new_interval_beats == self.grid_interval
-            || !self.is_looping
-            || next_old_grid_interval == next_new_grid_interval
-        {
-            self.grid_interval = new_interval_beats;
-            return;
-        }
-
-        // otherwise, the next grid interval has changed and we need to reschedule some things
-        // - the current stop grain
-        // - the next grain start
-        // - the fade to dry if its there
-        self.scheduler.clear();
-
-        if next_new_grid_interval < next_old_grid_interval {
-            // we need to stop the current grain at the new grid interval
-            self.scheduler
-                .schedule_event(next_new_grid_interval, LoopEvent::StopGrain);
-        } else {
-            // next_new_grid_interval > next_old_grid_interval
-            // need an interim grain that will take us to the longer grid interval from the end of the shorter
-            let reduced_grid_interval = next_new_grid_interval - next_old_grid_interval;
-            let how_far_thru = new_interval_beats - reduced_grid_interval;
-            self.scheduler.schedule_event(
-                next_old_grid_interval,
-                LoopEvent::StartLegatoGrain {
-                    duration: reduced_grid_interval,
-                    offset_reduction: how_far_thru,
-                },
-            );
-        }
-
-        self.scheduler
-            .schedule_event(next_new_grid_interval, LoopEvent::NextLoop);
-        // fade out the dry signal, if it's already faded out this will do no harm
-        self.scheduler
-            .schedule_event(next_new_grid_interval, LoopEvent::FadeOutDry);
         self.grid_interval = new_interval_beats;
     }
 
-    // start looping, and return how far we are through the current grid interval
-    pub fn start_looping(&mut self) {
-        debug_assert!(!self.is_looping);
-        self.is_looping = true;
-        self.time_looping_initiated = self.current_song_time;
-
-        // a previous stop_looping_on_next_grid() may have left a StopGrain/FadeInDry
-        // event scheduled for later that hasn't fired yet (e.g. quickly restarting the
-        // loop before its fade completed) - that event is now stale and, since the
-        // scheduler is a simple monotonic queue, could also be later than the new event
-        // below, so it must be cleared rather than left in place
-        self.scheduler.clear();
-
-        let next_grid_interval = self.next_grid(true);
-
-        self.scheduler
-            .schedule_event(next_grid_interval, LoopEvent::NextLoop);
-
-        self.scheduler
-            .schedule_event(next_grid_interval, LoopEvent::FadeOutDry);
+    pub fn start_looping(&mut self) -> StartTransition {
+        match self.phase {
+            LoopPhase::Idle => {
+                self.phase = LoopPhase::Armed {
+                    since: self.current_song_time,
+                };
+                StartTransition::Armed
+            }
+            // a pending stop hasn't committed yet: cancel it and carry on
+            // looping seamlessly, the sounding grain is still valid
+            LoopPhase::Stopping { grain_end } => {
+                self.phase = LoopPhase::Looping { grain_end };
+                StartTransition::Resumed
+            }
+            LoopPhase::Armed { .. } | LoopPhase::Looping { .. } => StartTransition::Ignored,
+        }
     }
 
     pub fn beats_since_last_grid(&self) -> f64 {
@@ -161,69 +147,126 @@ impl LoopScheduler {
         self.current_song_time - previous_grid_interval
     }
 
-    pub fn stop_looping_on_next_grid(&mut self) {
-        debug_assert!(self.is_looping);
-        self.is_looping = false;
-
-        let next_grid_interval = self.next_grid(true);
-
-        self.scheduler.clear();
-
-        self.scheduler
-            .schedule_event(next_grid_interval, LoopEvent::StopGrain);
-        self.scheduler
-            .schedule_event(next_grid_interval, LoopEvent::FadeInDry);
+    pub fn stop_looping_on_next_grid(&mut self) -> StopTransition {
+        match self.phase {
+            LoopPhase::Looping { grain_end } => {
+                self.phase = LoopPhase::Stopping { grain_end };
+                StopTransition::StopScheduled
+            }
+            // never reached the first boundary: nothing is sounding
+            LoopPhase::Armed { .. } => {
+                self.phase = LoopPhase::Idle;
+                StopTransition::CancelledArm
+            }
+            LoopPhase::Idle | LoopPhase::Stopping { .. } => StopTransition::Ignored,
+        }
     }
 
     pub fn stop_looping_immediately(&mut self) {
-        self.is_looping = false;
+        // the caller is expected to stop the grain player itself
+        self.phase = LoopPhase::Idle;
+    }
 
-        self.scheduler.clear();
-
-        // a time of -1 will get triggered on the next tick no matter what the beat time does
-        self.scheduler
-            .schedule_event(self.current_song_time, LoopEvent::StopGrain);
-        self.scheduler
-            .schedule_event(self.current_song_time, LoopEvent::FadeInDry);
+    pub fn is_looping(&self) -> bool {
+        matches!(
+            self.phase,
+            LoopPhase::Armed { .. } | LoopPhase::Looping { .. }
+        )
     }
 
     pub fn tick(&mut self, beat_time: f64) -> ArrayVec<LoopEvent, MAX_EVENTS_PER_TICK> {
         if beat_time < self.current_song_time {
-            // we've moved back in time, now what?
-            self.current_song_time = beat_time;
-            self.time_looping_initiated = beat_time;
+            // the transport jumped backwards (e.g. host loop wrap): keep any
+            // sounding grain but re-anchor the next boundary to the new timeline
+            self.phase = match self.phase {
+                LoopPhase::Idle => LoopPhase::Idle,
+                LoopPhase::Armed { .. } => LoopPhase::Armed { since: beat_time },
+                LoopPhase::Looping { .. } => LoopPhase::Looping {
+                    grain_end: self.next_boundary_after(beat_time),
+                },
+                LoopPhase::Stopping { .. } => LoopPhase::Stopping {
+                    grain_end: self.next_boundary_after(beat_time),
+                },
+            };
         }
 
+        let previous_time = self.current_song_time;
         self.current_song_time = beat_time;
 
-        let new_events = self.scheduler.tick(beat_time);
-        let mut returned_events = ArrayVec::new();
-        for event in new_events {
-            match event {
-                LoopEvent::NextLoop => {
-                    returned_events.push(LoopEvent::StartGrain {
+        let mut events = ArrayVec::new();
+
+        match self.phase {
+            LoopPhase::Idle => {}
+            LoopPhase::Armed { since } => {
+                // the boundary at (or first after) the moment start was requested
+                let start = next_grid_in_beats(since, self.grid_interval, self.fade_in_time);
+                if beat_time >= start {
+                    events.push(LoopEvent::StartGrain {
                         duration: self.grid_interval,
                     });
-                    // schedule the next loop
-                    self.scheduler
-                        .schedule_event(self.next_grid(false), LoopEvent::NextLoop);
+                    // the grain fires now; it runs out at the next boundary
+                    // after the fire tick (`start` itself may be in the past)
+                    self.phase = LoopPhase::Looping {
+                        grain_end: self.next_boundary_after(beat_time),
+                    };
                 }
-                _ => {
-                    returned_events.push(event);
+            }
+            LoopPhase::Looping { grain_end } => {
+                let next_boundary = self.next_boundary_after(previous_time);
+                let boundary_crossed = next_boundary <= beat_time;
+
+                if boundary_crossed && next_boundary < grain_end - GRID_EPSILON {
+                    // grid was shortened: a boundary arrives while the current
+                    // grain still has time to run - cut it and loop from here
+                    events.push(LoopEvent::StopGrain);
+                    events.push(LoopEvent::StartGrain {
+                        duration: self.grid_interval,
+                    });
+                    self.phase = LoopPhase::Looping {
+                        grain_end: next_boundary + self.grid_interval,
+                    };
+                } else if boundary_crossed && (next_boundary - grain_end).abs() <= GRID_EPSILON {
+                    // the normal case: the grain runs out exactly on a boundary
+                    events.push(LoopEvent::StartGrain {
+                        duration: self.grid_interval,
+                    });
+                    self.phase = LoopPhase::Looping {
+                        grain_end: next_boundary + self.grid_interval,
+                    };
+                } else if beat_time >= grain_end && grain_end < next_boundary - GRID_EPSILON {
+                    // grid was lengthened: the grain runs out before the next
+                    // boundary - bridge the gap with the tail of the loop content
+                    let duration = next_boundary - grain_end;
+                    events.push(LoopEvent::StartLegatoGrain {
+                        duration,
+                        offset_reduction: self.grid_interval - duration,
+                    });
+                    self.phase = LoopPhase::Looping {
+                        grain_end: next_boundary,
+                    };
+                }
+            }
+            LoopPhase::Stopping { .. } => {
+                let next_boundary = self.next_boundary_after(previous_time);
+                if next_boundary <= beat_time {
+                    events.push(LoopEvent::StopGrain);
+                    events.push(LoopEvent::LoopEnded);
+                    self.phase = LoopPhase::Idle;
                 }
             }
         }
 
-        returned_events
+        events
     }
 
-    fn next_grid(&self, include_now: bool) -> f64 {
-        let eps = if include_now { 0.0 } else { 0.0001 };
-        return next_grid_in_beats(
-            self.current_song_time + eps,
-            self.grid_interval,
-            self.fade_in_time,
-        );
+    // the first grid boundary strictly after `time`
+    fn next_boundary_after(&self, time: f64) -> f64 {
+        let boundary = next_grid_in_beats(time, self.grid_interval, self.fade_in_time);
+        if boundary <= time {
+            boundary + self.grid_interval
+        } else {
+            boundary
+        }
     }
 }
 
@@ -273,15 +316,9 @@ mod tests {
         assert_eq!(out0.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid);
 
-        scheduler.start_looping();
+        assert_eq!(scheduler.start_looping(), StartTransition::Armed);
         let out1 = scheduler.tick(1.0);
-        assert_eq!(
-            out1.as_slice(),
-            &[
-                LoopEvent::StartGrain { duration: grid },
-                LoopEvent::FadeOutDry
-            ]
-        );
+        assert_eq!(out1.as_slice(), &[LoopEvent::StartGrain { duration: grid }]);
 
         let out15 = scheduler.tick(1.5);
         assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
@@ -289,9 +326,15 @@ mod tests {
         let out2 = scheduler.tick(2.0);
         assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: grid }]);
 
-        scheduler.stop_looping_on_next_grid();
-        let out2 = scheduler.tick(3.0);
-        assert_eq!(out2.as_slice(), &[LoopEvent::StopGrain, LoopEvent::FadeInDry]);
+        assert_eq!(
+            scheduler.stop_looping_on_next_grid(),
+            StopTransition::StopScheduled
+        );
+        let out3 = scheduler.tick(3.0);
+        assert_eq!(
+            out3.as_slice(),
+            &[LoopEvent::StopGrain, LoopEvent::LoopEnded]
+        );
         let out9 = scheduler.tick(9.0);
         assert_eq!(out9.as_slice(), &[] as &[LoopEvent]);
     }
@@ -301,7 +344,6 @@ mod tests {
         let mut scheduler = LoopScheduler::new();
 
         // a small offset should produce the same result as above
-        let offset = 0.01;
         scheduler.set_fade_lead_in(0.01);
 
         let grid = 1.0;
@@ -312,13 +354,7 @@ mod tests {
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
-        assert_eq!(
-            out1.as_slice(),
-            &[
-                LoopEvent::StartGrain { duration: grid },
-                LoopEvent::FadeOutDry
-            ]
-        );
+        assert_eq!(out1.as_slice(), &[LoopEvent::StartGrain { duration: grid }]);
 
         let out15 = scheduler.tick(1.5);
         assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
@@ -327,15 +363,18 @@ mod tests {
         assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: grid }]);
 
         scheduler.stop_looping_on_next_grid();
-        let out2 = scheduler.tick(3.0);
-        assert_eq!(out2.as_slice(), &[LoopEvent::StopGrain, LoopEvent::FadeInDry]);
+        let out3 = scheduler.tick(3.0);
+        assert_eq!(
+            out3.as_slice(),
+            &[LoopEvent::StopGrain, LoopEvent::LoopEnded]
+        );
         let out9 = scheduler.tick(9.0);
         assert_eq!(out9.as_slice(), &[] as &[LoopEvent]);
     }
 
     #[test]
     fn test_loop_scheduler_shorten_loop() {
-        // test the situation where we shorted a loop whilst a longer loop is playing
+        // test the situation where we shorten a loop whilst a longer loop is playing
         let mut scheduler = LoopScheduler::new();
 
         let grid1 = 1.0;
@@ -347,13 +386,7 @@ mod tests {
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
-        assert_eq!(
-            out1.as_slice(),
-            &[
-                LoopEvent::StartGrain { duration: grid1 },
-                LoopEvent::FadeOutDry
-            ]
-        );
+        assert_eq!(out1.as_slice(), &[LoopEvent::StartGrain { duration: grid1 }]);
 
         let out15 = scheduler.tick(1.5);
         assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
@@ -372,7 +405,6 @@ mod tests {
             &[
                 LoopEvent::StopGrain,
                 LoopEvent::StartGrain { duration: grid2 },
-                LoopEvent::FadeOutDry
             ]
         );
 
@@ -382,7 +414,7 @@ mod tests {
 
     #[test]
     fn test_loop_scheduler_lengthen_loop_early() {
-        // this tests the "back to dry" when the loop is lengthened very
+        // this tests the "legato bridge" when the loop is lengthened very
         // soon after looping is started
         let mut scheduler = LoopScheduler::new();
 
@@ -395,13 +427,7 @@ mod tests {
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
-        assert_eq!(
-            out1.as_slice(),
-            &[
-                LoopEvent::StartGrain { duration: grid1 },
-                LoopEvent::FadeOutDry
-            ]
-        );
+        assert_eq!(out1.as_slice(), &[LoopEvent::StartGrain { duration: grid1 }]);
 
         let out15 = scheduler.tick(1.5);
         assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
@@ -413,12 +439,12 @@ mod tests {
         assert_eq!(out225.as_slice(), &[] as &[LoopEvent]);
         scheduler.set_grid_interval(grid2);
 
-        // when the short loop stops, we get a "legato" grain that takes us to the next interval
-        // we need an extra offset of 3 to make sure we're playing the end of the
-        // legato grain
-        let out25 = scheduler.tick(3.0);
+        // when the short loop runs out, we get a "legato" grain that takes us
+        // to the next (longer) grid interval. We need an extra offset of 3 to
+        // make sure we're playing the end of the legato grain
+        let out3 = scheduler.tick(3.0);
         assert_eq!(
-            out25.as_slice(),
+            out3.as_slice(),
             &[LoopEvent::StartLegatoGrain {
                 duration: 1.0,
                 offset_reduction: 3.0
@@ -427,19 +453,16 @@ mod tests {
 
         // then the new loop starts
         let out4 = scheduler.tick(4.0);
-        assert_eq!(
-            out4.as_slice(),
-            &[LoopEvent::StartGrain { duration: grid2 }, LoopEvent::FadeOutDry]
-        );
+        assert_eq!(out4.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
 
         // and continues
-        let out5 = scheduler.tick(8.0);
-        assert_eq!(out5.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
+        let out8 = scheduler.tick(8.0);
+        assert_eq!(out8.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
     }
 
     #[test]
     fn test_loop_scheduler_lengthen_loop_late() {
-        // as above but later, so the dry is not needed
+        // as above but later, so no bridge is needed
         let mut scheduler = LoopScheduler::new();
 
         let grid1 = 1.0;
@@ -451,13 +474,7 @@ mod tests {
 
         scheduler.start_looping();
         let out1 = scheduler.tick(1.0);
-        assert_eq!(
-            out1.as_slice(),
-            &[
-                LoopEvent::StartGrain { duration: grid1 },
-                LoopEvent::FadeOutDry
-            ]
-        );
+        assert_eq!(out1.as_slice(), &[LoopEvent::StartGrain { duration: grid1 }]);
 
         let out15 = scheduler.tick(1.5);
         assert_eq!(out15.as_slice(), &[] as &[LoopEvent]);
@@ -478,5 +495,84 @@ mod tests {
         // and continues
         let out8 = scheduler.tick(8.0);
         assert_eq!(out8.as_slice(), &[LoopEvent::StartGrain { duration: grid2 }]);
+    }
+
+    #[test]
+    fn test_loop_scheduler_stop_before_first_boundary() {
+        // a start followed by a stop before the boundary arrives never fires
+        // anything: the arm is simply cancelled
+        let mut scheduler = LoopScheduler::new();
+        scheduler.set_grid_interval(1.0);
+        scheduler.tick(0.2);
+
+        assert_eq!(scheduler.start_looping(), StartTransition::Armed);
+        assert!(scheduler.is_looping());
+        let out = scheduler.tick(0.5);
+        assert_eq!(out.as_slice(), &[] as &[LoopEvent]);
+
+        assert_eq!(
+            scheduler.stop_looping_on_next_grid(),
+            StopTransition::CancelledArm
+        );
+        assert!(!scheduler.is_looping());
+
+        // nothing ever fires, dry was never touched
+        for t in [1.0, 2.0, 3.0] {
+            assert_eq!(scheduler.tick(t).as_slice(), &[] as &[LoopEvent]);
+        }
+    }
+
+    #[test]
+    fn test_loop_scheduler_restart_before_stop_boundary_resumes() {
+        // stop followed by a start before the stop's boundary cancels the stop:
+        // the loop carries on as if never released, no StopGrain is emitted
+        let mut scheduler = LoopScheduler::new();
+        scheduler.set_grid_interval(1.0);
+        scheduler.tick(0.0);
+
+        scheduler.start_looping();
+        let out1 = scheduler.tick(1.0);
+        assert_eq!(out1.as_slice(), &[LoopEvent::StartGrain { duration: 1.0 }]);
+
+        scheduler.stop_looping_on_next_grid();
+        scheduler.tick(1.5);
+        assert_eq!(scheduler.start_looping(), StartTransition::Resumed);
+
+        // the loop continues seamlessly at the next boundary
+        let out2 = scheduler.tick(2.0);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: 1.0 }]);
+    }
+
+    #[test]
+    fn test_loop_scheduler_rapid_grid_changes_reconcile() {
+        // several grid changes between boundaries: only the last one matters,
+        // the machine reconciles against the sounding grain rather than
+        // clearing and rescheduling on each change
+        let mut scheduler = LoopScheduler::new();
+        scheduler.set_grid_interval(1.0);
+        scheduler.tick(0.0);
+
+        scheduler.start_looping();
+        let out1 = scheduler.tick(1.0);
+        assert_eq!(out1.as_slice(), &[LoopEvent::StartGrain { duration: 1.0 }]);
+
+        // flail around between boundaries
+        scheduler.set_grid_interval(0.25);
+        scheduler.set_grid_interval(4.0);
+        scheduler.set_grid_interval(0.5);
+
+        // grid is now 0.5: a boundary arrives at 1.5, before the grain's own
+        // end at 2.0 - the grain is cut and the loop restarts
+        let out15 = scheduler.tick(1.5);
+        assert_eq!(
+            out15.as_slice(),
+            &[
+                LoopEvent::StopGrain,
+                LoopEvent::StartGrain { duration: 0.5 },
+            ]
+        );
+
+        let out2 = scheduler.tick(2.0);
+        assert_eq!(out2.as_slice(), &[LoopEvent::StartGrain { duration: 0.5 }]);
     }
 }
