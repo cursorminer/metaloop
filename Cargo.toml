@@ -13,6 +13,14 @@ members = ["xtask"]
 [lib]
 crate-type = ["cdylib", "lib"]
 
+[[bin]]
+name = "metaloop_gui"
+path = "src/main.rs"
+required-features = ["standalone"]
+
+[features]
+standalone = ["nih_plug/standalone"]
+
 [dependencies]
 # Remove the `assert_process_allocs` feature to allow allocations on the audio
 # thread in debug builds.

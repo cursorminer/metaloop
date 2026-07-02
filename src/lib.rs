@@ -39,7 +39,7 @@ pub fn grid_size_for_int_control(value: i32) -> f32 {
     4.0 * num as f32 / denom as f32
 }
 
-struct Metaloop {
+pub struct Metaloop {
     params: Arc<MetaloopParams>,
     grain_looper: GrainLooper<StereoPair<f32>>,
     sample_rate: f32,
