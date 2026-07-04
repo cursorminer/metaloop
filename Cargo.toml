@@ -8,7 +8,7 @@ homepage = "https://youtu.be/dQw4w9WgXcQ"
 description = "A looper with scrubbing"
 
 [workspace]
-members = ["xtask"]
+members = ["xtask", "crates/metaloop-dsp"]
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -31,10 +31,7 @@ nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = [] 
 
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", package = "nih_plug_egui", features = [] }
 
-arrayvec = "0.7"
-atomic_float = "0.1"
-approx = "0.5.1"
-num-traits = "0.2"
+metaloop-dsp = { path = "crates/metaloop-dsp" }
 
 [profile.release]
 lto = "thin"

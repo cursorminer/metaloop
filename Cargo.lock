@@ -1109,11 +1109,17 @@ dependencies = [
 name = "metaloop"
 version = "0.1.0"
 dependencies = [
- "approx",
- "arrayvec",
- "atomic_float",
+ "metaloop-dsp",
  "nih_plug",
  "nih_plug_egui",
+]
+
+[[package]]
+name = "metaloop-dsp"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "arrayvec",
  "num-traits",
 ]
 

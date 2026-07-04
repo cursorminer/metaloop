@@ -2,7 +2,7 @@ use nih_plug::prelude::{BoolParam, FloatParam, IntParam, IntRange, Param, ParamS
 
 use nih_plug_egui::egui::{emath, vec2, CursorIcon, Response, Sense, Ui, Widget};
 
-use crate::sync_rates::{grid_size_for_int_control, NUM_BEATS_X};
+use metaloop_dsp::sync_rates::{grid_size_for_int_control, NUM_BEATS_X};
 use emath::{Pos2, Rect};
 
 // Map a click to the offset param value such that the clicked cell loops

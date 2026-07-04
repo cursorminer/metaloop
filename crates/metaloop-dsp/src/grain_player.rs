@@ -1,7 +1,6 @@
 use crate::grain::Grain;
 use crate::grain::WhichBuffer;
 use crate::{delay_line::DelayLine, stereo_pair::AudioSampleOps};
-use nih_plug::nih_debug_assert;
 
 pub const MAX_GRAINS: usize = 10;
 
@@ -74,7 +73,7 @@ impl<T: AudioSampleOps> GrainPlayer<T> {
                 return;
             }
         }
-        nih_debug_assert!(false, "grain pool full, dropping grain");
+        debug_assert!(false, "grain pool full, dropping grain");
     }
 
     pub fn reset(&mut self) {

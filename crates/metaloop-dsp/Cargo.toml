@@ -1,0 +1,12 @@
+[package]
+name = "metaloop-dsp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Rob Tubb <rob@cursorminer.org>"]
+license = "GPL-3.0-or-later"
+description = "Pure-Rust DSP core for Metaloop (no nih-plug dependency)"
+
+[dependencies]
+arrayvec = "0.7"
+approx = "0.5.1"
+num-traits = "0.2"

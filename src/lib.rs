@@ -1,24 +1,14 @@
 use nih_plug::prelude::*;
+use nih_plug_egui::widgets::ParamSlider;
 use nih_plug_egui::{create_egui_editor, egui, EguiState};
 use std::sync::Arc;
 
-mod delay_line;
-mod grain;
-mod grain_looper;
-mod grain_player;
-mod loop_scheduler;
-mod ramped_value;
-mod stereo_pair;
-mod sync_rates;
-mod test_utils;
-mod time_converter;
 mod ui;
-mod waveform_state;
-use grain_looper::GrainLooper;
-use stereo_pair::StereoPair;
-use sync_rates::{grid_size_for_int_control, SYNCED_RATES};
-use time_converter::TimeConverter;
-use waveform_state::{WaveformState, WaveformWriter};
+use metaloop_dsp::grain_looper::GrainLooper;
+use metaloop_dsp::stereo_pair::StereoPair;
+use metaloop_dsp::sync_rates::{grid_size_for_int_control, SYNCED_RATES};
+use metaloop_dsp::time_converter::TimeConverter;
+use metaloop_dsp::waveform_state::{WaveformState, WaveformWriter};
 
 const GUI_WIDTH: u32 = 800;
 const GUI_HEIGHT: u32 = 600;
@@ -305,6 +295,21 @@ impl Plugin for Metaloop {
                         .with_width(window_size.x - border * 2.0)
                         .with_height(XY_PAD_HEIGHT),
                     );
+
+                    ui.horizontal(|ui| {
+                        let reverse_on = params.reverse_param.value();
+                        if ui.selectable_label(reverse_on, "Reverse").clicked() {
+                            setter.begin_set_parameter(&params.reverse_param);
+                            setter.set_parameter(&params.reverse_param, !reverse_on);
+                            setter.end_set_parameter(&params.reverse_param);
+                        }
+
+                        ui.label("Speed");
+                        ui.add(ParamSlider::for_param(&params.speed, setter));
+
+                        ui.label("Fade");
+                        ui.add(ParamSlider::for_param(&params.fade, setter));
+                    });
                 });
 
                 // the waveform scrolls with audio, not with input events, so

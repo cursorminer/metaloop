@@ -1,8 +1,8 @@
 use nih_plug_egui::egui::{pos2, vec2, Color32, Rect, Response, Sense, Ui, Widget};
 use std::sync::Arc;
 
-use crate::sync_rates::NUM_BEATS_X;
-use crate::waveform_state::{WaveformState, WAVEFORM_BINS};
+use metaloop_dsp::sync_rates::NUM_BEATS_X;
+use metaloop_dsp::waveform_state::{WaveformState, WAVEFORM_BINS};
 
 pub fn scale_linear(
     input: f32,
